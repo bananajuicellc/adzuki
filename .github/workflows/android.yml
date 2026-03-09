@@ -30,7 +30,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: androidApp/build/outputs/apk/debug/androidApp-debug.apk
+        path: kotlin/androidApp/build/outputs/apk/debug/androidApp-debug.apk
 
     - name: Run tests
       run: ./gradlew testDebugUnitTest

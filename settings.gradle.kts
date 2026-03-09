@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "black-bean"
-include(":shared", ":androidApp")
+include(":kotlin:shared", ":kotlin:androidApp")
