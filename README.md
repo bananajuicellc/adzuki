@@ -4,9 +4,9 @@ A literate Beancount implementation.
 
 ## Motivation
 
-As the treasurer for a meeting of the Religious Society of Friends (Quaker church), my primary goal is to create a cross-platform, plain text accounting application to collaborate on the Meeting's finances with the finance committee.
+As the treasurer for a monthly meeting of the Religious Society of Friends (Quaker church), my primary goal is to create a cross-platform, plain text accounting application to collaborate on the Meeting's finances with my eventual successor and potentially with a finance committee if the meeting is led to form one.
 
-Managing finances for a volunteer committee requires clear transparency and effective succession planning. By using a plain text approach, we can ensure that financial records remain accessible, verifiable, and easy to hand off to future treasurers and committee members.
+My goal in using a plain text approach is to ensure that financial records remain accessible, verifiable, and easy to hand off to future treasurers and committee members.
 
 ## Literate Programming
 
