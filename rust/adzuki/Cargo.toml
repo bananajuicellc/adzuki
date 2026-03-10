@@ -3,10 +3,18 @@ name = "adzuki"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 codespan-reporting = "0.13"
 lelwel = "0.10.2"
 logos = "0.16"
+uniffi = { version = "0.31.0", features = ["cli"] }
 
 [build-dependencies]
 lelwel = "0.10.2"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/uniffi_bindgen.rs"

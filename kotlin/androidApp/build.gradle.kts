@@ -44,5 +44,6 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
     testImplementation("junit:junit:4.13.2")
 }
