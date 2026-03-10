@@ -1,4 +1,4 @@
-package com.adzuki.android
+package tech.bananajuice.adzuki.android
 
 import org.junit.Test
 import org.junit.Assert.assertEquals

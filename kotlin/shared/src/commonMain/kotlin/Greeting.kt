@@ -1,4 +1,4 @@
-package com.adzuki.shared
+package tech.bananajuice.adzuki.shared
 
 class Greeting {
     fun greet(): String {

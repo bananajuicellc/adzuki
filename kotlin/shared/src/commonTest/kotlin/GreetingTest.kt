@@ -1,4 +1,4 @@
-package com.adzuki.shared
+package tech.bananajuice.adzuki.shared
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
