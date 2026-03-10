@@ -1,8 +1,6 @@
-# adzuki
+# Adzuki - Plain Text Accounting
 
 A literate Beancount implementation in Rust.
-
-Why the name "adzuki"? Adzuki beans are rust-colored (a nod to the fact that this project is built in Rust), and their association with Beancount makes for a perfect pairing (as adzuki is a type of bean). Furthermore, it reflects a love for Japanese food, where adzuki beans are commonly used in both sweet and savory dishes.
 
 ## Motivation
 
@@ -20,3 +18,7 @@ In addition to the core application, the long-term vision for `adzuki` includes 
 
 - A cross-platform application for managing literate Beancount files.
 - A Python wrapper that mimics the report generating capabilities of the original `beancount` package, allowing for seamless integration with existing tools and scripts.
+
+## Why the name "adzuki"?
+
+Adzuki beans are a rust-colored bean, commonly used in both sweet and savory Japanese dishes. i happen to love Japanese food and the fact that [Beancount](https://github.com/beancount/beancount) and related projects such as [limabean](https://github.com/tesujimath/limabean) and [turbobean](https://github.com/themoritz/turbobean) use bean-related names.
