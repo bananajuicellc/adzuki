@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "black-bean"
+rootProject.name = "adzuki"
 include(":kotlin:shared", ":kotlin:androidApp")

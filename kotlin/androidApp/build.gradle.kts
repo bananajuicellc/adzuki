@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.blackbean.android"
+    namespace = "tech.bananajuice.adzuki.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.blackbean.android"
+        applicationId = "tech.bananajuice.adzuki.android"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

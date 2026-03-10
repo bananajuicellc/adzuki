@@ -24,7 +24,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.blackbean.shared"
+    namespace = "tech.bananajuice.adzuki.shared"
     compileSdk = 34
     defaultConfig {
         minSdk = 24

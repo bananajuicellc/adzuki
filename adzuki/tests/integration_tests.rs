@@ -1,4 +1,4 @@
-use black_bean::parse_markdown;
+use adzuki::parse_markdown;
 use std::fs;
 
 #[test]
