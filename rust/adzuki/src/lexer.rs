@@ -37,6 +37,8 @@ pub enum Token {
     Heading6,
     #[regex(r"([^#\n` \t]|#[^ ]|`[^`])+")]
     Text,
+    #[regex("```beancount\n([^`]|`[^`]|``[^`])*```")]
+    BeancountBlock,
     #[regex("```[a-zA-Z0-9]*\n([^`]|`[^`]|``[^`])*```")]
     CodeBlock,
     #[token("\n")]
@@ -45,6 +47,66 @@ pub enum Token {
     Whitespace,
     #[token("<error>")]
     Error,
+}
+
+#[derive(Logos, Debug, PartialEq, Copy, Clone)]
+#[logos(error = LexerError)]
+pub enum BeancountToken {
+    EOF,
+    #[regex(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")]
+    Date,
+    #[regex(r"(Assets|Liabilities|Equity|Income|Expenses)(:[A-Z0-9][a-zA-Z0-9\-]*)+")]
+    Account,
+    #[regex(r"[A-Z][A-Z0-9'\.\_\-]{0,23}")]
+    Currency,
+    #[regex(r"-?([0-9|,]+(\.[0-9]+)?|\.[0-9]+)", priority = 3)]
+    Number,
+    #[token("option")]
+    OptionDirective,
+    #[token("open")]
+    OpenDirective,
+    #[token("*")]
+    #[token("!")]
+    #[token("txn")]
+    #[token("P", priority = 3)]
+    #[token("#")]
+    TxnFlag,
+    #[regex(r#""([^"\\]|\\.)*""#)]
+    StringLiteral,
+    #[token(",")]
+    Comma,
+
+    #[token("\n")]
+    Newline,
+    #[regex(r"[ \t]+")]
+    Whitespace,
+    #[regex(r";[^\n]*", allow_greedy = true)]
+    Comment,
+
+    #[token("<error>")]
+    Error,
+}
+
+pub fn tokenize_beancount(source: &str, diags: &mut Vec<Diagnostic>) -> (Vec<BeancountToken>, Vec<Span>) {
+    let lexer = BeancountToken::lexer(source);
+    let mut tokens = vec![];
+    let mut spans = vec![];
+
+    for (token, span) in lexer.spanned() {
+        match token {
+            Ok(token) => {
+                tokens.push(token);
+            }
+            Err(err) => {
+                diags.push(err.into_diagnostic(span.clone()));
+                tokens.push(BeancountToken::Error);
+            }
+        }
+        spans.push(span);
+    }
+    tokens.push(BeancountToken::EOF);
+    spans.push(source.len()..source.len());
+    (tokens, spans)
 }
 
 pub fn tokenize(source: &str, diags: &mut Vec<Diagnostic>) -> (Vec<Token>, Vec<Span>) {

@@ -1,0 +1,41 @@
+// Beancount parser for Lelwel
+
+token Date='<date>';
+token Account='<account>';
+token Currency='<currency>';
+token Number='<number>';
+token OptionDirective='option';
+token OpenDirective='open';
+token TxnFlag='<txn flag>';
+token StringLiteral='<string>';
+token Comma=',';
+
+token Comment='<comment>';
+token Newline='<newline>';
+token Whitespace;
+
+skip Whitespace;
+skip Comment;
+
+start beancount;
+
+beancount: block*;
+
+block:
+  option_directive
+| Date (
+    OpenDirective Account [currency_list] [StringLiteral] Newline >open_directive
+  | TxnFlag [StringLiteral [StringLiteral]] Newline posting_list >transaction
+  )
+| Newline ^
+;
+
+option_directive: OptionDirective StringLiteral StringLiteral Newline;
+
+currency_list: Currency (Comma Currency)*;
+
+posting_list: posting*;
+
+posting: [TxnFlag] Account [amount] Newline;
+
+amount: Number Currency;

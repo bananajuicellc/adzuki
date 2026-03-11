@@ -8,6 +8,7 @@ token Heading5='<heading 5>';
 token Heading6='<heading 6>';
 
 token Text='<text>';
+token BeancountBlock='<beancount block>';
 token CodeBlock='<code block>';
 token Newline='<newline>';
 
@@ -22,6 +23,7 @@ markdown: block*;
 block:
   heading
 | paragraph
+| BeancountBlock
 | CodeBlock
 | Newline ^
 ;
