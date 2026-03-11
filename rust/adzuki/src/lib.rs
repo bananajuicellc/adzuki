@@ -1,6 +1,7 @@
 pub mod lexer;
 pub mod parser;
 pub mod beancount_parser;
+pub mod plugin;
 pub mod ast;
 
 uniffi::setup_scaffolding!();
