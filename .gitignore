@@ -23,6 +23,7 @@ target
 build/
 **/build/
 local.properties
+kotlin/androidApp/src/main/jniLibs/
 .gradle/
 build/
 */build/
