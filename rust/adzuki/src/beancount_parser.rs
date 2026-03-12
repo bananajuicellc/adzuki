@@ -6,7 +6,7 @@ use nom::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TokenSlice<'a>(pub &'a [SpannedToken<'a, BeancountToken>]);
+pub struct TokenSlice<'a>(pub &'a [SpannedToken<BeancountToken>]);
 
 impl<'a> nom::Slice<std::ops::RangeFrom<usize>> for TokenSlice<'a> {
     fn slice(&self, range: std::ops::RangeFrom<usize>) -> Self {
@@ -61,7 +61,7 @@ impl<'a> nom::InputLength for &TokenSlice<'a> {
 
 pub fn match_token<'a, E: ParseError<TokenSlice<'a>>>(
     expected: BeancountToken,
-) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, SpannedToken<'a, BeancountToken>, E> {
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, SpannedToken<BeancountToken>, E> {
     move |i: TokenSlice<'a>| {
         if i.0.is_empty() {
             Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Eof)))
@@ -93,7 +93,7 @@ pub fn skip_inline_whitespace<'a, E: ParseError<TokenSlice<'a>>>(
     }
 }
 
-fn extract_string(tok: &SpannedToken<'_, BeancountToken>, source: &str) -> String {
+fn extract_string(tok: &SpannedToken<BeancountToken>, source: &str) -> String {
     let raw = &source[tok.1.clone()];
     if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
         raw[1..raw.len()-1].to_string()
@@ -285,7 +285,7 @@ pub fn parse_transaction<'a>(
 
 pub fn parse_beancount<'a>(
     source: &'a str,
-    tokens: &'a [SpannedToken<'a, BeancountToken>],
+    tokens: &'a [SpannedToken<BeancountToken>],
 ) -> Vec<BeancountNode> {
     let mut nodes = vec![];
     let mut i = TokenSlice(tokens);

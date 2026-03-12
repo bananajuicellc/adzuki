@@ -9,7 +9,7 @@ use crate::lexer::{lex_core, lex_beancount, CoreToken, SpannedToken};
 
 uniffi::setup_scaffolding!();
 
-pub fn parse_markdown<'a>(source: &'a str, tokens: &'a [SpannedToken<'a, CoreToken>]) -> Vec<parser::MdNode> {
+pub fn parse_markdown<'a>(source: &'a str, tokens: &'a [SpannedToken<CoreToken>]) -> Vec<parser::MdNode> {
     parser::parse_markdown(source, tokens)
 }
 

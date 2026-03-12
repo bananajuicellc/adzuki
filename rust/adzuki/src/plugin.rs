@@ -1,15 +1,16 @@
 use crate::lexer::{lex_core, CoreToken, SpannedToken};
 
 pub trait Plugin {
-    fn process(&self, filepath: &str, stream: Vec<SpannedToken<'_, CoreToken>>, source: &str) -> Vec<SpannedToken<'static, CoreToken>>;
+    fn process(&self, filepath: &str, stream: Vec<SpannedToken<CoreToken>>, source: &str) -> Vec<SpannedToken<CoreToken>>;
 }
 
 pub struct MarkdownPlugin;
 
 impl Plugin for MarkdownPlugin {
-    fn process(&self, filepath: &str, stream: Vec<SpannedToken<'_, CoreToken>>, source: &str) -> Vec<SpannedToken<'static, CoreToken>> {
+    fn process(&self, filepath: &str, stream: Vec<SpannedToken<CoreToken>>, source: &str) -> Vec<SpannedToken<CoreToken>> {
+        // If it is not a markdown file, plugins for markdown should transparently return the original input without changes.
         if !filepath.ends_with(".md") {
-            return stream.into_iter().map(|(t, r)| (t, r)).collect();
+            return stream;
         }
 
         let mut out = Vec::new();
@@ -20,20 +21,48 @@ impl Plugin for MarkdownPlugin {
         // Determine if we are at the start of a line
         let mut is_start_of_line = true;
 
-        for token in tokens.iter() {
-            let is_beancount_start = token.0 == CoreToken::CodeBlockStart && source[token.1.clone()].starts_with("```beancount");
+        let is_codeblock_edge = |idx: usize, tokens: &[SpannedToken<CoreToken>]| -> Option<(bool, usize)> {
+            // we look for ```
+            if idx + 2 < tokens.len()
+                && tokens[idx].0 == CoreToken::Backtick
+                && tokens[idx+1].0 == CoreToken::Backtick
+                && tokens[idx+2].0 == CoreToken::Backtick
+            {
+                // Check if it says beancount
+                if idx + 3 < tokens.len() && tokens[idx+3].0 == CoreToken::Ident && source[tokens[idx+3].1.clone()] == *"beancount" {
+                    return Some((true, 4));
+                } else if idx + 3 < tokens.len() && tokens[idx+3].0 == CoreToken::Newline {
+                    return Some((false, 3));
+                } else if idx + 3 == tokens.len() {
+                    return Some((false, 3));
+                }
+                return Some((false, 3)); // simple CodeBlockEnd equivalent
+            }
+            None
+        };
 
-            if !in_beancount_block && is_beancount_start {
-                in_beancount_block = true;
-                out.push(token.clone());
-                // CodeBlockStart consumes trailing newlines, next token is on a new line
-                is_start_of_line = true;
-                continue;
-            } else if in_beancount_block && token.0 == CoreToken::CodeBlockEnd {
-                in_beancount_block = false;
-                out.push(token.clone());
-                is_start_of_line = true;
-                continue;
+        let mut i = 0;
+        while i < tokens.len() {
+            let token = &tokens[i];
+
+            if let Some((is_start, len)) = is_codeblock_edge(i, tokens) {
+                if !in_beancount_block && is_start {
+                    in_beancount_block = true;
+                    for j in 0..len {
+                        out.push(tokens[i + j].clone());
+                    }
+                    i += len;
+                    is_start_of_line = false; // it is in the middle of a line now or end depending on trailing newline, but wait, if it's the start it's the rest of the line. Wait, we should just let the main loop handle the trailing newline.
+                    continue;
+                } else if in_beancount_block && !is_start {
+                    in_beancount_block = false;
+                    for j in 0..len {
+                        out.push(tokens[i + j].clone());
+                    }
+                    i += len;
+                    is_start_of_line = false;
+                    continue;
+                }
             }
 
             if is_start_of_line && !in_beancount_block {
@@ -48,8 +77,8 @@ impl Plugin for MarkdownPlugin {
             }
 
             out.push(token.clone());
-
-            is_start_of_line = token.0 == CoreToken::Newline || token.0 == CoreToken::CodeBlockEnd;
+            is_start_of_line = token.0 == CoreToken::Newline;
+            i += 1;
         }
 
         out

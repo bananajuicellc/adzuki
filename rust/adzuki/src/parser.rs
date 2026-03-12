@@ -6,7 +6,7 @@ use nom::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TokenSlice<'a>(pub &'a [SpannedToken<'a, CoreToken>]);
+pub struct TokenSlice<'a>(pub &'a [SpannedToken<CoreToken>]);
 
 impl<'a> nom::Slice<std::ops::RangeFrom<usize>> for TokenSlice<'a> {
     fn slice(&self, range: std::ops::RangeFrom<usize>) -> Self {
@@ -76,7 +76,7 @@ pub enum MdNode {
 
 fn match_token<'a, E: ParseError<TokenSlice<'a>>>(
     expected: CoreToken,
-) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, SpannedToken<'a, CoreToken>, E> {
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, SpannedToken<CoreToken>, E> {
     move |i: TokenSlice<'a>| {
         if i.0.is_empty() {
             Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Eof)))
@@ -88,18 +88,25 @@ fn match_token<'a, E: ParseError<TokenSlice<'a>>>(
     }
 }
 
-fn any_token<'a, E: ParseError<TokenSlice<'a>>>(
-    i: TokenSlice<'a>,
-) -> IResult<TokenSlice<'a>, SpannedToken<'a, CoreToken>, E> {
-    if i.0.is_empty() {
-        Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Eof)))
-    } else {
-        Ok((TokenSlice(&i.0[1..]), i.0[0].clone()))
+fn match_tokens<'a, E: ParseError<TokenSlice<'a>>>(
+    expected: &[CoreToken],
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, &'a [SpannedToken<CoreToken>], E> {
+    let expected = expected.to_vec();
+    move |i: TokenSlice<'a>| {
+        if i.0.len() < expected.len() {
+            return Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Eof)));
+        }
+        for (idx, exp) in expected.iter().enumerate() {
+            if i.0[idx].0 != *exp {
+                return Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Tag)));
+            }
+        }
+        Ok((TokenSlice(&i.0[expected.len()..]), &i.0[..expected.len()]))
     }
 }
 
 fn take_until_newline<'a, E: ParseError<TokenSlice<'a>>>(
-) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, &'a [SpannedToken<'a, CoreToken>], E> {
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, &'a [SpannedToken<CoreToken>], E> {
     move |i: TokenSlice<'a>| {
         for (idx, token) in i.0.iter().enumerate() {
             if token.0 == CoreToken::Newline {
@@ -110,7 +117,7 @@ fn take_until_newline<'a, E: ParseError<TokenSlice<'a>>>(
     }
 }
 
-fn reconstruct_string(tokens: &[SpannedToken<'_, CoreToken>], source: &str) -> String {
+fn reconstruct_string(tokens: &[SpannedToken<CoreToken>], source: &str) -> String {
     let mut s = String::new();
     for (_tok, span) in tokens {
         if span.start == 0 && span.end == 0 {
@@ -130,19 +137,24 @@ pub fn parse_heading<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, MdNode, Error<TokenSlice<'a>>> {
     move |i: TokenSlice<'a>| {
-        let (i, first_token) = match_token(CoreToken::HeadingMarker)(i)?;
-        let first_str = &source[first_token.1.clone()];
+        let mut level = 0;
+        let mut cur_i = i.clone();
 
-        let level = first_str.chars().take_while(|&c| c == '#').count();
+        while !cur_i.0.is_empty() && cur_i.0[0].0 == CoreToken::Hash {
+            level += 1;
+            cur_i = TokenSlice(&cur_i.0[1..]);
+        }
+
         if level < 1 || level > 6 {
             return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Tag)));
         }
 
-        let (i, content_tokens) = take_until_newline()(i)?;
-        let (i, _) = opt(match_token(CoreToken::Newline))(i)?;
+        let (cur_i, _) = opt(match_token(CoreToken::Whitespace))(cur_i)?;
+        let (cur_i, content_tokens) = take_until_newline()(cur_i)?;
+        let (cur_i, _) = opt(match_token(CoreToken::Newline))(cur_i)?;
 
         Ok((
-            i,
+            cur_i,
             MdNode::Heading {
                 level: level as u8,
                 content: reconstruct_string(content_tokens, source).trim().to_string(),
@@ -155,26 +167,24 @@ pub fn parse_codeblock<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, MdNode, Error<TokenSlice<'a>>> {
     move |i: TokenSlice<'a>| {
-        let (mut i, start_tok) = match_token(CoreToken::CodeBlockStart)(i)?;
-        let start_str = &source[start_tok.1.clone()];
-        let mut lang = start_str[3..].trim().to_string();
+        let (mut i, _) = match_tokens(&[CoreToken::Backtick, CoreToken::Backtick, CoreToken::Backtick])(i)?;
 
-        if lang.is_empty() {
-            if let Ok((i_next, next_tok)) = any_token::<Error<_>>(i.clone()) {
-                if next_tok.0 != CoreToken::Newline {
-                    lang = source[next_tok.1.clone()].trim().to_string();
-                    i = i_next;
-                }
-            }
+        let mut lang = String::new();
+        if !i.0.is_empty() && i.0[0].0 == CoreToken::Ident {
+            lang = source[i.0[0].1.clone()].trim().to_string();
+            i = TokenSlice(&i.0[1..]);
         }
+
+        let (mut i, _) = take_until_newline()(i)?;
+        let (mut i, _) = opt(match_token(CoreToken::Newline))(i)?;
 
         let mut inner_tokens = vec![];
         loop {
             if i.0.is_empty() {
                 break;
             }
-            if i.0[0].0 == CoreToken::CodeBlockEnd {
-                i = TokenSlice(&i.0[1..]);
+            if i.0.len() >= 3 && i.0[0].0 == CoreToken::Backtick && i.0[1].0 == CoreToken::Backtick && i.0[2].0 == CoreToken::Backtick {
+                i = TokenSlice(&i.0[3..]);
                 break;
             }
             inner_tokens.push(i.0[0].clone());
@@ -204,7 +214,7 @@ pub fn parse_paragraph<'a>(
         if i.0[0].0 == CoreToken::Newline {
             return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Tag)));
         }
-        if i.0[0].0 == CoreToken::HeadingMarker || i.0[0].0 == CoreToken::CodeBlockStart {
+        if i.0[0].0 == CoreToken::Hash || i.0[0].0 == CoreToken::Backtick {
             return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Tag)));
         }
 
@@ -220,7 +230,7 @@ pub fn parse_paragraph<'a>(
 
             if i.0[0].0 == CoreToken::Newline && i.0.len() > 1 {
                 let next_tok = &i.0[1];
-                if next_tok.0 == CoreToken::HeadingMarker || next_tok.0 == CoreToken::CodeBlockStart {
+                if next_tok.0 == CoreToken::Hash || next_tok.0 == CoreToken::Backtick {
                     break;
                 }
             }
@@ -244,7 +254,7 @@ pub fn parse_paragraph<'a>(
 
 pub fn parse_markdown<'a>(
     source: &'a str,
-    tokens: &'a [SpannedToken<'a, CoreToken>],
+    tokens: &'a [SpannedToken<CoreToken>],
 ) -> Vec<MdNode> {
     let mut nodes = vec![];
     let mut i = TokenSlice(tokens);

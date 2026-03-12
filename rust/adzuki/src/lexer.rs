@@ -17,15 +17,6 @@ pub enum CoreToken {
     #[token("\n")]
     Newline,
 
-    #[regex(r"```[a-zA-Z0-9]+[ \t]*\r?\n?", priority = 7)]
-    CodeBlockStart,
-
-    #[regex(r"```[ \t]*\r?\n?", priority = 6)]
-    CodeBlockEnd,
-
-    #[regex(r"#{1,6}[ \t]+")]
-    HeadingMarker,
-
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
     Ident,
 
@@ -89,9 +80,9 @@ pub enum BeancountToken {
     Other,
 }
 
-pub type SpannedToken<'a, T> = (T, Range<usize>);
+pub type SpannedToken<T> = (T, Range<usize>);
 
-pub fn lex_core(source: &str) -> Vec<SpannedToken<'_, CoreToken>> {
+pub fn lex_core(source: &str) -> Vec<SpannedToken<CoreToken>> {
     let mut lexer = CoreToken::lexer(source);
     let mut tokens = vec![];
     while let Some(res) = lexer.next() {
@@ -104,7 +95,7 @@ pub fn lex_core(source: &str) -> Vec<SpannedToken<'_, CoreToken>> {
     tokens
 }
 
-pub fn lex_beancount(source: &str) -> Vec<SpannedToken<'_, BeancountToken>> {
+pub fn lex_beancount(source: &str) -> Vec<SpannedToken<BeancountToken>> {
     let mut lexer = BeancountToken::lexer(source);
     let mut tokens = vec![];
     while let Some(res) = lexer.next() {
