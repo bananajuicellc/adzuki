@@ -1,220 +1,81 @@
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenTree {
-    Group(Group),
-    Ident(Ident),
-    Punct(Punct),
-    Literal(Literal),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TokenStream {
-    pub trees: Vec<TokenTree>,
-}
-
-impl TokenStream {
-    pub fn new(trees: Vec<TokenTree>) -> Self {
-        Self { trees }
-    }
-}
-
-impl std::fmt::Display for TokenStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for tree in &self.trees {
-            match tree {
-                TokenTree::Group(g) => {
-                    match g.delimiter {
-                        Delimiter::Parenthesis => write!(f, "({})", g.stream)?,
-                        Delimiter::Brace => write!(f, "{{{}}}", g.stream)?,
-                        Delimiter::Bracket => write!(f, "[{}]", g.stream)?,
-                        Delimiter::None => write!(f, "{}", g.stream)?,
-                    }
-                }
-                TokenTree::Ident(id) => write!(f, "{}", id.text)?,
-                TokenTree::Punct(p) => write!(f, "{}", p.ch)?,
-                TokenTree::Literal(l) => write!(f, "{}", l.text)?,
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Group {
-    pub delimiter: Delimiter,
-    pub stream: TokenStream,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Delimiter {
-    Parenthesis,
-    Brace,
-    Bracket,
-    None,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ident {
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Punct {
-    pub ch: char,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Literal {
-    pub text: String,
-}
+use crate::lexer::{lex_core, CoreToken, SpannedToken};
 
 pub trait Plugin {
-    fn process(&self, filepath: &str, stream: TokenStream) -> TokenStream;
+    fn process(&self, filepath: &str, stream: Vec<SpannedToken<'_, CoreToken>>, source: &str) -> Vec<SpannedToken<'static, CoreToken>>;
 }
 
 pub struct MarkdownPlugin;
 
 impl Plugin for MarkdownPlugin {
-    fn process(&self, filepath: &str, stream: TokenStream) -> TokenStream {
+    fn process(&self, filepath: &str, stream: Vec<SpannedToken<'_, CoreToken>>, source: &str) -> Vec<SpannedToken<'static, CoreToken>> {
         if !filepath.ends_with(".md") {
-            return stream;
+            return stream.into_iter().map(|(t, r)| (t, r)).collect();
         }
 
         let mut out = Vec::new();
         let mut in_beancount_block = false;
 
-        let mut i = 0;
-        let trees = &stream.trees;
+        let tokens = &stream;
 
-        // Helper to check for ```beancount
-        let is_beancount_start = |index: usize| -> bool {
-            if index + 3 >= trees.len() {
-                return false;
-            }
-            if let (
-                TokenTree::Punct(Punct { ch: '`' }),
-                TokenTree::Punct(Punct { ch: '`' }),
-                TokenTree::Punct(Punct { ch: '`' }),
-                TokenTree::Ident(Ident { text })
-            ) = (&trees[index], &trees[index + 1], &trees[index + 2], &trees[index + 3]) {
-                if text == "beancount" {
-                    return true;
-                }
-            }
-            false
-        };
+        // Determine if we are at the start of a line
+        let mut is_start_of_line = true;
 
-        // Helper to check for ```
-        let is_block_end = |index: usize| -> bool {
-            if index + 2 >= trees.len() {
-                return false;
-            }
-            if let (
-                TokenTree::Punct(Punct { ch: '`' }),
-                TokenTree::Punct(Punct { ch: '`' }),
-                TokenTree::Punct(Punct { ch: '`' })
-            ) = (&trees[index], &trees[index + 1], &trees[index + 2]) {
-                return true;
-            }
-            false
-        };
+        for token in tokens.iter() {
+            let is_beancount_start = token.0 == CoreToken::CodeBlockStart && source[token.1.clone()].starts_with("```beancount");
 
-        // If not in a beancount block, the first line should be commented out.
-        if !in_beancount_block && !is_beancount_start(0) {
-            out.push(TokenTree::Punct(Punct { ch: ';' }));
-            out.push(TokenTree::Literal(Literal { text: " ".to_string() }));
-        }
-
-        while i < trees.len() {
-            if !in_beancount_block && is_beancount_start(i) {
+            if !in_beancount_block && is_beancount_start {
                 in_beancount_block = true;
-                // Add the start tokens
-                out.push(trees[i].clone()); // `
-                out.push(trees[i+1].clone()); // `
-                out.push(trees[i+2].clone()); // `
-                out.push(trees[i+3].clone()); // beancount
-                i += 4;
+                out.push(token.clone());
+                // CodeBlockStart consumes trailing newlines, next token is on a new line
+                is_start_of_line = true;
                 continue;
-            } else if in_beancount_block && is_block_end(i) {
+            } else if in_beancount_block && token.0 == CoreToken::CodeBlockEnd {
                 in_beancount_block = false;
-                // Add the end tokens
-                out.push(trees[i].clone()); // `
-                out.push(trees[i+1].clone()); // `
-                out.push(trees[i+2].clone()); // `
-                i += 3;
+                out.push(token.clone());
+                is_start_of_line = true;
                 continue;
             }
 
-            let tree = &trees[i];
-            out.push(tree.clone());
-
-            if let TokenTree::Punct(Punct { ch: '\n' }) = tree {
-                if !in_beancount_block && i + 1 < trees.len() {
-                    if !is_beancount_start(i + 1) {
-                        out.push(TokenTree::Punct(Punct { ch: ';' }));
-                        out.push(TokenTree::Literal(Literal { text: " ".to_string() }));
-                    }
+            if is_start_of_line && !in_beancount_block {
+                if token.0 == CoreToken::Newline {
+                    out.push((CoreToken::PunctOrOther, 0..0)); // ';'
+                } else if token.0 == CoreToken::Whitespace {
+                    out.push((CoreToken::PunctOrOther, 0..0)); // ';'
+                } else {
+                    out.push((CoreToken::PunctOrOther, 0..0)); // ';'
+                    out.push((CoreToken::Whitespace, 0..0));   // ' '
                 }
             }
 
-            i += 1;
+            out.push(token.clone());
+
+            is_start_of_line = token.0 == CoreToken::Newline || token.0 == CoreToken::CodeBlockEnd;
         }
 
-        TokenStream::new(out)
+        out
     }
 }
 
 pub fn process_markdown_stream(filepath: &str, input: &str) -> String {
-    let stream = lex_token_stream(input);
+    let stream = lex_core(input);
     let plugin = MarkdownPlugin;
-    let modified = plugin.process(filepath, stream);
-    modified.to_string()
-}
+    let modified = plugin.process(filepath, stream, input);
 
-pub fn lex_token_stream(input: &str) -> TokenStream {
-    let mut chars = input.chars().peekable();
-    let mut trees = Vec::new();
-
-    while let Some(ch) = chars.peek().copied() {
-        if ch.is_alphanumeric() || ch == '_' {
-            // Ident
-            let mut text = String::new();
-            while let Some(&c) = chars.peek() {
-                if c.is_alphanumeric() || c == '_' {
-                    text.push(c);
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-            trees.push(TokenTree::Ident(Ident { text }));
-        } else if ch.is_whitespace() {
-            if ch == '\n' {
-                trees.push(TokenTree::Punct(Punct { ch: '\n' }));
-                chars.next();
-            } else {
-                // Literal (Whitespace)
-                let mut text = String::new();
-                while let Some(&c) = chars.peek() {
-                    if c.is_whitespace() && c != '\n' {
-                        text.push(c);
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-                if !text.is_empty() {
-                    trees.push(TokenTree::Literal(Literal { text }));
-                }
+    let mut out_str = String::new();
+    for (tok, span) in modified {
+        if span.start == 0 && span.end == 0 {
+            if tok == CoreToken::PunctOrOther {
+                out_str.push(';');
+            } else if tok == CoreToken::Whitespace {
+                out_str.push(' ');
             }
         } else {
-            // Punct
-            trees.push(TokenTree::Punct(Punct { ch }));
-            chars.next();
+            out_str.push_str(&input[span]);
         }
     }
-
-    TokenStream::new(trees)
+    out_str
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

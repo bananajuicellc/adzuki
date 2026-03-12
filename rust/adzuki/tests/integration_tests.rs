@@ -1,18 +1,14 @@
-use adzuki::parse_markdown;
+use adzuki::parse_to_tree;
 use std::fs;
 
 #[test]
 fn test_parse_headings_markdown() {
-    let source = fs::read_to_string("tests/fixtures/headings.md").unwrap();
-    let cst = parse_markdown(&source);
+    let source = fs::read_to_string("tests/fixtures/headings.md").unwrap_or_else(|_| fs::read_to_string("rust/adzuki/tests/fixtures/headings.md").unwrap());
+    let tree = parse_to_tree(source);
 
-    let cst_str = format!("{}", cst);
-    assert!(cst_str.contains("Heading1 \"# \""));
-    assert!(cst_str.contains("Text \"Heading\""));
-    assert!(cst_str.contains("Text \"1\""));
-    assert!(cst_str.contains("Heading2 \"## \""));
-    assert!(cst_str.contains("Text \"Heading\""));
-    assert!(cst_str.contains("Text \"2\""));
+    let tree_str = format!("{:?}", tree);
+    assert!(tree_str.contains("Heading { level: 1, content: \"Heading 1\" }"));
+    assert!(tree_str.contains("Heading { level: 2, content: \"Heading 2\" }"));
 }
 
 #[test]
@@ -60,17 +56,10 @@ fn test_parse_beancount_block() {
 
 #[test]
 fn test_parse_code_blocks_markdown() {
-    let source = fs::read_to_string("tests/fixtures/code_blocks.md").unwrap();
-    let cst = parse_markdown(&source);
+    let source = fs::read_to_string("tests/fixtures/code_blocks.md").unwrap_or_else(|_| fs::read_to_string("rust/adzuki/tests/fixtures/code_blocks.md").unwrap());
+    let tree = parse_to_tree(source);
 
-    let cst_str = format!("{}", cst);
-    assert!(cst_str.contains("CodeBlock \"```rust\\nfn main() {\\n    println!(\\\"Hello, world!\\\");\\n}\\n```\""));
-    assert!(cst_str.contains("Text \"This\""));
-    assert!(cst_str.contains("Text \"is\""));
-    assert!(cst_str.contains("Text \"a\""));
-    assert!(cst_str.contains("Text \"paragraph\""));
-    assert!(cst_str.contains("Text \"before\""));
-    assert!(cst_str.contains("Text \"the\""));
-    assert!(cst_str.contains("Text \"code\""));
-    assert!(cst_str.contains("Text \"block.\""));
+    let tree_str = format!("{:?}", tree);
+    assert!(tree_str.contains("Paragraph { content: \"This is a paragraph before the code block.\" }"));
+    assert!(tree_str.contains("CodeBlock { content: \"fn main() {\\n    println!(\\\"Hello, world!\\\");\\n}\" }"));
 }

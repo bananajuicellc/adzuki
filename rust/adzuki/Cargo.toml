@@ -7,13 +7,9 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-codespan-reporting = "0.13"
-lelwel = "0.10.2"
 logos = "0.16"
+nom = "7"
 uniffi = { version = "0.31.0", features = ["cli"] }
-
-[build-dependencies]
-lelwel = "0.10.2"
 
 [[bin]]
 name = "uniffi-bindgen"
