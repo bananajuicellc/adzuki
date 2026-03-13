@@ -327,57 +327,6 @@ fun mapParseTreeToBlocks(tree: ParseTree): List<Block> {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun EditorScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    val fileUri = (state.currentScreen as? Screen.Editor)?.fileUri ?: return
-    val context = LocalContext.current
-    val uri = Uri.parse(fileUri)
-    val file = DocumentFile.fromSingleUri(context, uri)
-
-    BackHandler { onIntent(MainIntent.NavigateBack) }
-
-    val initialText = remember(fileUri) {
-        try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                inputStream.bufferedReader().use { it.readText() }
-            } ?: ""
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    val viewModel = remember(fileUri, initialText) {
-        val parseTree = parseToTree(initialText)
-        val mappedBlocks = mapParseTreeToBlocks(parseTree)
-        DocumentViewModel(
-            initialState = DocumentState(
-                blocks = mappedBlocks
-            )
-        )
-    }
-    val editorState by viewModel.state.collectAsState()
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(file?.name ?: "Editor") },
-                navigationIcon = {
-                    IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            BlockEditor(
-                state = editorState,
-                onIntent = viewModel::processIntent
-            )
-        }
-    }
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -398,7 +347,7 @@ class MainActivity : ComponentActivity() {
                     val viewModel: MainViewModel = viewModel()
                     val state by viewModel.state.collectAsState()
 
-                    when (state.currentScreen) {
+                    when (val currentScreen = state.currentScreen) {
                         is Screen.SelectFolder -> SelectFolderScreen(
                             onIntent = viewModel::processIntent
                         )
@@ -410,10 +359,56 @@ class MainActivity : ComponentActivity() {
                             state = state,
                             onIntent = viewModel::processIntent
                         )
-                        is Screen.Editor -> EditorScreen(
-                            state = state,
-                            onIntent = viewModel::processIntent
-                        )
+                        is Screen.Editor -> {
+                            val fileUri = currentScreen.fileUri
+                            val context = LocalContext.current
+                            val uri = Uri.parse(fileUri)
+                            val file = DocumentFile.fromSingleUri(context, uri)
+
+                            BackHandler { viewModel.processIntent(MainIntent.NavigateBack) }
+
+                            val initialText = remember(fileUri) {
+                                try {
+                                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                                        inputStream.bufferedReader().use { it.readText() }
+                                    } ?: ""
+                                } catch (e: Exception) {
+                                    ""
+                                }
+                            }
+
+                            val docViewModel = remember(fileUri, initialText) {
+                                val parseTree = parseToTree(initialText)
+                                val mappedBlocks = mapParseTreeToBlocks(parseTree)
+                                DocumentViewModel(
+                                    initialState = DocumentState(
+                                        blocks = mappedBlocks
+                                    )
+                                )
+                            }
+                            val editorState by docViewModel.state.collectAsState()
+
+                            Scaffold(
+                                topBar = {
+                                    @OptIn(ExperimentalMaterial3Api::class)
+                                    TopAppBar(
+                                        title = { Text(file?.name ?: "Editor") },
+                                        navigationIcon = {
+                                            IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
+                                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                                            }
+                                        }
+                                    )
+                                }
+                            ) { padding ->
+                                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                                    BlockEditor(
+                                        state = editorState,
+                                        onIntent = docViewModel::processIntent
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
