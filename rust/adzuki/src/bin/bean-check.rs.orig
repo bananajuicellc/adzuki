@@ -41,7 +41,7 @@ fn main() {
 
     let mut has_errors = false;
     for error in &errors {
-        if !error.message.contains("Unexpected token: Other") && !error.message.contains("Unexpected token: Whitespace") && !error.message.contains("Unexpected token: Newline") {
+        if !error.message.contains("Unexpected token: Other") {
             let (line, col) = get_line_and_col(&processed_source, error.span.start);
             eprintln!("{}:{}:{}: {}", filepath, line, col, error.message);
             has_errors = true;
