@@ -893,6 +893,29 @@ public object FfiConverterUByte: FfiConverter<UByte, Byte> {
 /**
  * @suppress
  */
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
@@ -949,6 +972,44 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
 
 
 
+data class Amount (
+    var `number`: kotlin.String
+    ,
+    var `currency`: kotlin.String
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAmount: FfiConverterRustBuffer<Amount> {
+    override fun read(buf: ByteBuffer): Amount {
+        return Amount(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Amount) = (
+            FfiConverterString.allocationSize(value.`number`) +
+            FfiConverterString.allocationSize(value.`currency`)
+    )
+
+    override fun write(value: Amount, buf: ByteBuffer) {
+            FfiConverterString.write(value.`number`, buf)
+            FfiConverterString.write(value.`currency`, buf)
+    }
+}
+
+
+
 data class ParseTree (
     var `nodes`: List<AstNode>
 
@@ -982,11 +1043,93 @@ public object FfiConverterTypeParseTree: FfiConverterRustBuffer<ParseTree> {
 
 
 
+data class Posting (
+    var `flag`: kotlin.String?
+    ,
+    var `account`: kotlin.String
+    ,
+    var `amount`: Amount?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePosting: FfiConverterRustBuffer<Posting> {
+    override fun read(buf: ByteBuffer): Posting {
+        return Posting(
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeAmount.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Posting) = (
+            FfiConverterOptionalString.allocationSize(value.`flag`) +
+            FfiConverterString.allocationSize(value.`account`) +
+            FfiConverterOptionalTypeAmount.allocationSize(value.`amount`)
+    )
+
+    override fun write(value: Posting, buf: ByteBuffer) {
+            FfiConverterOptionalString.write(value.`flag`, buf)
+            FfiConverterString.write(value.`account`, buf)
+            FfiConverterOptionalTypeAmount.write(value.`amount`, buf)
+    }
+}
+
+
+
+data class Span (
+    var `start`: kotlin.UInt
+    ,
+    var `end`: kotlin.UInt
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSpan: FfiConverterRustBuffer<Span> {
+    override fun read(buf: ByteBuffer): Span {
+        return Span(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Span) = (
+            FfiConverterUInt.allocationSize(value.`start`) +
+            FfiConverterUInt.allocationSize(value.`end`)
+    )
+
+    override fun write(value: Span, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`start`, buf)
+            FfiConverterUInt.write(value.`end`, buf)
+    }
+}
+
+
+
 sealed class AstNode {
 
     data class Heading(
         val `level`: kotlin.UByte,
-        val `content`: kotlin.String) : AstNode()
+        val `content`: kotlin.String,
+        val `span`: uniffi.adzuki.Span) : AstNode()
 
     {
 
@@ -995,7 +1138,8 @@ sealed class AstNode {
     }
 
     data class Paragraph(
-        val `content`: kotlin.String) : AstNode()
+        val `content`: kotlin.String,
+        val `span`: uniffi.adzuki.Span) : AstNode()
 
     {
 
@@ -1004,7 +1148,18 @@ sealed class AstNode {
     }
 
     data class CodeBlock(
-        val `content`: kotlin.String) : AstNode()
+        val `content`: kotlin.String,
+        val `span`: uniffi.adzuki.Span) : AstNode()
+
+    {
+
+
+        companion object
+    }
+
+    data class Beancount(
+        val `nodes`: List<uniffi.adzuki.BeancountNode>,
+        val `span`: uniffi.adzuki.Span) : AstNode()
 
     {
 
@@ -1031,12 +1186,19 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
             1 -> AstNode.Heading(
                 FfiConverterUByte.read(buf),
                 FfiConverterString.read(buf),
+                FfiConverterTypeSpan.read(buf),
                 )
             2 -> AstNode.Paragraph(
                 FfiConverterString.read(buf),
+                FfiConverterTypeSpan.read(buf),
                 )
             3 -> AstNode.CodeBlock(
                 FfiConverterString.read(buf),
+                FfiConverterTypeSpan.read(buf),
+                )
+            4 -> AstNode.Beancount(
+                FfiConverterSequenceTypeBeancountNode.read(buf),
+                FfiConverterTypeSpan.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
@@ -1049,6 +1211,7 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
                 4UL
                 + FfiConverterUByte.allocationSize(value.`level`)
                 + FfiConverterString.allocationSize(value.`content`)
+                + FfiConverterTypeSpan.allocationSize(value.`span`)
             )
         }
         is AstNode.Paragraph -> {
@@ -1056,6 +1219,7 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
             (
                 4UL
                 + FfiConverterString.allocationSize(value.`content`)
+                + FfiConverterTypeSpan.allocationSize(value.`span`)
             )
         }
         is AstNode.CodeBlock -> {
@@ -1063,6 +1227,15 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
             (
                 4UL
                 + FfiConverterString.allocationSize(value.`content`)
+                + FfiConverterTypeSpan.allocationSize(value.`span`)
+            )
+        }
+        is AstNode.Beancount -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterSequenceTypeBeancountNode.allocationSize(value.`nodes`)
+                + FfiConverterTypeSpan.allocationSize(value.`span`)
             )
         }
     }
@@ -1073,16 +1246,25 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
                 buf.putInt(1)
                 FfiConverterUByte.write(value.`level`, buf)
                 FfiConverterString.write(value.`content`, buf)
+                FfiConverterTypeSpan.write(value.`span`, buf)
                 Unit
             }
             is AstNode.Paragraph -> {
                 buf.putInt(2)
                 FfiConverterString.write(value.`content`, buf)
+                FfiConverterTypeSpan.write(value.`span`, buf)
                 Unit
             }
             is AstNode.CodeBlock -> {
                 buf.putInt(3)
                 FfiConverterString.write(value.`content`, buf)
+                FfiConverterTypeSpan.write(value.`span`, buf)
+                Unit
+            }
+            is AstNode.Beancount -> {
+                buf.putInt(4)
+                FfiConverterSequenceTypeBeancountNode.write(value.`nodes`, buf)
+                FfiConverterTypeSpan.write(value.`span`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -1090,6 +1272,265 @@ public object FfiConverterTypeAstNode : FfiConverterRustBuffer<AstNode>{
 }
 
 
+
+
+
+sealed class BeancountNode {
+
+    data class OptionDirective(
+        val `name`: kotlin.String,
+        val `value`: kotlin.String) : BeancountNode()
+
+    {
+
+
+        companion object
+    }
+
+    data class OpenDirective(
+        val `date`: kotlin.String,
+        val `account`: kotlin.String,
+        val `currencies`: List<kotlin.String>,
+        val `bookingMethod`: kotlin.String?) : BeancountNode()
+
+    {
+
+
+        companion object
+    }
+
+    data class Transaction(
+        val `date`: kotlin.String,
+        val `flag`: kotlin.String,
+        val `payee`: kotlin.String?,
+        val `narration`: kotlin.String?,
+        val `postings`: List<uniffi.adzuki.Posting>) : BeancountNode()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBeancountNode : FfiConverterRustBuffer<BeancountNode>{
+    override fun read(buf: ByteBuffer): BeancountNode {
+        return when(buf.getInt()) {
+            1 -> BeancountNode.OptionDirective(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            2 -> BeancountNode.OpenDirective(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            3 -> BeancountNode.Transaction(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterSequenceTypePosting.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: BeancountNode) = when(value) {
+        is BeancountNode.OptionDirective -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterString.allocationSize(value.`value`)
+            )
+        }
+        is BeancountNode.OpenDirective -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`date`)
+                + FfiConverterString.allocationSize(value.`account`)
+                + FfiConverterSequenceString.allocationSize(value.`currencies`)
+                + FfiConverterOptionalString.allocationSize(value.`bookingMethod`)
+            )
+        }
+        is BeancountNode.Transaction -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`date`)
+                + FfiConverterString.allocationSize(value.`flag`)
+                + FfiConverterOptionalString.allocationSize(value.`payee`)
+                + FfiConverterOptionalString.allocationSize(value.`narration`)
+                + FfiConverterSequenceTypePosting.allocationSize(value.`postings`)
+            )
+        }
+    }
+
+    override fun write(value: BeancountNode, buf: ByteBuffer) {
+        when(value) {
+            is BeancountNode.OptionDirective -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterString.write(value.`value`, buf)
+                Unit
+            }
+            is BeancountNode.OpenDirective -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`date`, buf)
+                FfiConverterString.write(value.`account`, buf)
+                FfiConverterSequenceString.write(value.`currencies`, buf)
+                FfiConverterOptionalString.write(value.`bookingMethod`, buf)
+                Unit
+            }
+            is BeancountNode.Transaction -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`date`, buf)
+                FfiConverterString.write(value.`flag`, buf)
+                FfiConverterOptionalString.write(value.`payee`, buf)
+                FfiConverterOptionalString.write(value.`narration`, buf)
+                FfiConverterSequenceTypePosting.write(value.`postings`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
+    override fun read(buf: ByteBuffer): kotlin.String? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterString.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.String?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterString.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.String?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAmount: FfiConverterRustBuffer<Amount?> {
+    override fun read(buf: ByteBuffer): Amount? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAmount.read(buf)
+    }
+
+    override fun allocationSize(value: Amount?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAmount.allocationSize(value)
+        }
+    }
+
+    override fun write(value: Amount?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAmount.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypePosting: FfiConverterRustBuffer<List<Posting>> {
+    override fun read(buf: ByteBuffer): List<Posting> {
+        val len = buf.getInt()
+        return List<Posting>(len) {
+            FfiConverterTypePosting.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<Posting>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePosting.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Posting>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePosting.write(it, buf)
+        }
+    }
+}
 
 
 
@@ -1115,6 +1556,34 @@ public object FfiConverterSequenceTypeAstNode: FfiConverterRustBuffer<List<AstNo
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeAstNode.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeBeancountNode: FfiConverterRustBuffer<List<BeancountNode>> {
+    override fun read(buf: ByteBuffer): List<BeancountNode> {
+        val len = buf.getInt()
+        return List<BeancountNode>(len) {
+            FfiConverterTypeBeancountNode.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<BeancountNode>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeBeancountNode.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<BeancountNode>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeBeancountNode.write(it, buf)
         }
     }
 } fun `parseToTree`(`source`: kotlin.String): ParseTree {

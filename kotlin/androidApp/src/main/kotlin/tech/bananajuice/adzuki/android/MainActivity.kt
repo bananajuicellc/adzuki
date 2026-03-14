@@ -53,12 +53,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
-import tech.bananajuice.adzuki.shared.mvi.Block
-import tech.bananajuice.adzuki.shared.mvi.BlockEditor
-import tech.bananajuice.adzuki.shared.mvi.CodeBlock
+import tech.bananajuice.adzuki.shared.mvi.BeancountNode
+import tech.bananajuice.adzuki.shared.mvi.DocumentEditor
+import tech.bananajuice.adzuki.shared.mvi.CodeBlockNode
+import tech.bananajuice.adzuki.shared.mvi.DocumentNode
 import tech.bananajuice.adzuki.shared.mvi.DocumentState
 import tech.bananajuice.adzuki.shared.mvi.DocumentViewModel
-import tech.bananajuice.adzuki.shared.mvi.ParagraphBlock
+import tech.bananajuice.adzuki.shared.mvi.HeadingNode
+import tech.bananajuice.adzuki.shared.mvi.ParagraphNode
+import tech.bananajuice.adzuki.shared.mvi.Span
+import androidx.compose.runtime.rememberCoroutineScope
 import uniffi.adzuki.AstNode
 import uniffi.adzuki.ParseTree
 import uniffi.adzuki.parseToTree
@@ -317,12 +321,13 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     }
 }
 
-fun mapParseTreeToBlocks(tree: ParseTree): List<Block> {
+fun mapParseTreeToNodes(tree: ParseTree): List<DocumentNode> {
     return tree.nodes.map { node ->
         when (node) {
-            is AstNode.Heading -> ParagraphBlock(text = "#".repeat(node.level.toInt()) + " " + node.content)
-            is AstNode.Paragraph -> ParagraphBlock(text = node.content)
-            is AstNode.CodeBlock -> CodeBlock(text = node.content.trim('`', '\n'), isRaw = false)
+            is AstNode.Heading -> HeadingNode(level = node.level.toInt(), content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
+            is AstNode.Paragraph -> ParagraphNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
+            is AstNode.CodeBlock -> CodeBlockNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
+            is AstNode.Beancount -> BeancountNode(span = Span(node.span.start.toInt(), node.span.end.toInt()))
         }
     }
 }
@@ -377,13 +382,15 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
+                            val coroutineScope = rememberCoroutineScope()
                             val docViewModel = remember(fileUri, initialText) {
-                                val parseTree = parseToTree(initialText)
-                                val mappedBlocks = mapParseTreeToBlocks(parseTree)
                                 DocumentViewModel(
-                                    initialState = DocumentState(
-                                        blocks = mappedBlocks
-                                    )
+                                    initialState = DocumentState(text = initialText),
+                                    coroutineScope = coroutineScope,
+                                    parserProxy = { text ->
+                                        val parseTree = parseToTree(text)
+                                        mapParseTreeToNodes(parseTree)
+                                    }
                                 )
                             }
                             val editorState by docViewModel.state.collectAsState()
@@ -402,7 +409,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             ) { padding ->
                                 Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-                                    BlockEditor(
+                                    DocumentEditor(
                                         state = editorState,
                                         onIntent = docViewModel::processIntent
                                     )
