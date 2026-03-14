@@ -47,6 +47,7 @@ import androidx.documentfile.provider.DocumentFile
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -399,6 +400,9 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
+                                                coroutineScope.launch(Dispatchers.Main) {
+                                                    Toast.makeText(context, "Error saving document: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         }
                                     }
