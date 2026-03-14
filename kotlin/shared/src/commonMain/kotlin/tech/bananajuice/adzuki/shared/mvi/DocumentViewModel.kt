@@ -1,44 +1,53 @@
 package tech.bananajuice.adzuki.shared.mvi
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class DocumentViewModel(initialState: DocumentState = DocumentState()) {
+class DocumentViewModel(
+    initialState: DocumentState = DocumentState(),
+    private val parseDebounceMs: Long = 300L,
+    private val coroutineScope: CoroutineScope,
+    private val parserProxy: (String) -> List<DocumentNode>
+) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<DocumentState> = _state.asStateFlow()
 
+    private var parseJob: Job? = null
+
+    init {
+        // Initial parse
+        if (initialState.text.isNotEmpty()) {
+            parseText(initialState.text)
+        }
+    }
+
     fun processIntent(intent: DocumentIntent) {
         when (intent) {
-            is DocumentIntent.UpdateBlockText -> {
+            is DocumentIntent.UpdateText -> {
                 _state.update { currentState ->
-                    val newBlocks = currentState.blocks.map { block ->
-                        if (block.id == intent.blockId) {
-                            when (block) {
-                                is ParagraphBlock -> block.copy(text = intent.newText)
-                                is CodeBlock -> block.copy(text = intent.newText)
-                                else -> block
-                            }
-                        } else {
-                            block
-                        }
-                    }
-                    currentState.copy(blocks = newBlocks)
+                    currentState.copy(text = intent.newText)
+                }
+
+                parseJob?.cancel()
+                parseJob = coroutineScope.launch(Dispatchers.Default) {
+                    delay(parseDebounceMs)
+                    parseText(intent.newText)
                 }
             }
-            is DocumentIntent.ToggleCodeBlockRaw -> {
-                _state.update { currentState ->
-                    val newBlocks = currentState.blocks.map { block ->
-                        if (block.id == intent.blockId && block is CodeBlock) {
-                            block.copy(isRaw = !block.isRaw)
-                        } else {
-                            block
-                        }
-                    }
-                    currentState.copy(blocks = newBlocks)
-                }
-            }
+        }
+    }
+
+    private fun parseText(text: String) {
+        val parsedNodes = parserProxy(text)
+        _state.update { currentState ->
+            currentState.copy(nodes = parsedNodes)
         }
     }
 }

@@ -1,34 +1,25 @@
 package tech.bananajuice.adzuki.shared.mvi
 
-import kotlin.random.Random
+// We keep a generic AstNode representation in the shared module since uniffi.adzuki.AstNode
+// is currently generated directly in the AndroidApp module.
+// In a full multiplatform setup, we'd generate Uniffi bindings for KMP natively.
 
-sealed interface Block {
-    val id: String
+data class Span(val start: Int, val end: Int)
+
+sealed interface DocumentNode {
+    val span: Span
 }
 
-private fun generateId(): String {
-    val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    return (1..8)
-        .map { chars.random() }
-        .joinToString("")
-}
-
-data class ParagraphBlock(
-    override val id: String = generateId(),
-    val text: String
-) : Block
-
-data class CodeBlock(
-    override val id: String = generateId(),
-    val text: String,
-    val isRaw: Boolean = false
-) : Block
+data class HeadingNode(val level: Int, val content: String, override val span: Span) : DocumentNode
+data class ParagraphNode(val content: String, override val span: Span) : DocumentNode
+data class CodeBlockNode(val content: String, override val span: Span) : DocumentNode
+data class BeancountNode(override val span: Span) : DocumentNode
 
 data class DocumentState(
-    val blocks: List<Block> = emptyList()
+    val text: String = "",
+    val nodes: List<DocumentNode> = emptyList()
 )
 
 sealed interface DocumentIntent {
-    data class UpdateBlockText(val blockId: String, val newText: String) : DocumentIntent
-    data class ToggleCodeBlockRaw(val blockId: String) : DocumentIntent
+    data class UpdateText(val newText: String) : DocumentIntent
 }

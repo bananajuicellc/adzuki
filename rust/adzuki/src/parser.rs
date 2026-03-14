@@ -64,13 +64,16 @@ pub enum MdNode {
     Heading {
         level: u8,
         content: String,
+        span: std::ops::Range<usize>,
     },
     Paragraph {
         content: String,
+        span: std::ops::Range<usize>,
     },
     CodeBlock {
         language: Option<String>,
         tokens: Vec<(CoreToken, std::ops::Range<usize>)>,
+        span: std::ops::Range<usize>,
     },
 }
 
@@ -137,6 +140,7 @@ pub fn parse_heading<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, MdNode, Error<TokenSlice<'a>>> {
     move |i: TokenSlice<'a>| {
+        let start_idx = i.0.first().map(|(_, span)| span.start).unwrap_or(0);
         let mut level = 0;
         let mut cur_i = i.clone();
 
@@ -153,11 +157,18 @@ pub fn parse_heading<'a>(
         let (cur_i, content_tokens) = take_until_newline()(cur_i)?;
         let (cur_i, _) = opt(match_token(CoreToken::Newline))(cur_i)?;
 
+        let end_idx = if cur_i.0.is_empty() {
+            source.len()
+        } else {
+            cur_i.0[0].1.start
+        };
+
         Ok((
             cur_i,
             MdNode::Heading {
                 level: level as u8,
                 content: reconstruct_string(content_tokens, source).trim().to_string(),
+                span: start_idx..end_idx,
             },
         ))
     }
@@ -167,6 +178,7 @@ pub fn parse_codeblock<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, MdNode, Error<TokenSlice<'a>>> {
     move |i: TokenSlice<'a>| {
+        let start_idx = i.0.first().map(|(_, span)| span.start).unwrap_or(0);
         let (mut i, _) = match_tokens(&[CoreToken::Backtick, CoreToken::Backtick, CoreToken::Backtick])(i)?;
 
         let mut lang = String::new();
@@ -191,11 +203,18 @@ pub fn parse_codeblock<'a>(
             i = TokenSlice(&i.0[1..]);
         }
 
+        let end_idx = if i.0.is_empty() {
+            source.len()
+        } else {
+            i.0[0].1.start
+        };
+
         Ok((
             i,
             MdNode::CodeBlock {
                 language: if lang.is_empty() { None } else { Some(lang) },
                 tokens: inner_tokens.into_iter().map(|(t, r)| (t, r)).collect(),
+                span: start_idx..end_idx,
             },
         ))
     }
@@ -205,6 +224,7 @@ pub fn parse_paragraph<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, MdNode, Error<TokenSlice<'a>>> {
     move |i: TokenSlice<'a>| {
+        let start_idx = i.0.first().map(|(_, span)| span.start).unwrap_or(0);
         let mut i = i;
         let mut content_tokens = vec![];
 
@@ -243,10 +263,17 @@ pub fn parse_paragraph<'a>(
             i = TokenSlice(&i.0[1..]);
         }
 
+        let end_idx = if i.0.is_empty() {
+            source.len()
+        } else {
+            i.0[0].1.start
+        };
+
         Ok((
             i,
             MdNode::Paragraph {
                 content: reconstruct_string(&content_tokens, source).trim().to_string(),
+                span: start_idx..end_idx,
             },
         ))
     }

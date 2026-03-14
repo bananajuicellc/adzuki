@@ -7,8 +7,8 @@ fn test_parse_headings_markdown() {
     let tree = parse_to_tree(source);
 
     let tree_str = format!("{:?}", tree);
-    assert!(tree_str.contains("Heading { level: 1, content: \"Heading 1\" }"));
-    assert!(tree_str.contains("Heading { level: 2, content: \"Heading 2\" }"));
+    assert!(tree_str.contains("Heading { level: 1, content: \"Heading 1\""));
+    assert!(tree_str.contains("Heading { level: 2, content: \"Heading 2\""));
 }
 
 #[test]
@@ -18,7 +18,7 @@ fn test_parse_beancount_block() {
 
     let beancount_node = tree.nodes.iter().find(|n| matches!(n, adzuki::ast::AstNode::Beancount { .. })).unwrap();
 
-    if let adzuki::ast::AstNode::Beancount { nodes } = beancount_node {
+    if let adzuki::ast::AstNode::Beancount { nodes, .. } = beancount_node {
         assert_eq!(nodes.len(), 3);
 
         match &nodes[0] {
@@ -60,6 +60,6 @@ fn test_parse_code_blocks_markdown() {
     let tree = parse_to_tree(source);
 
     let tree_str = format!("{:?}", tree);
-    assert!(tree_str.contains("Paragraph { content: \"This is a paragraph before the code block.\" }"));
-    assert!(tree_str.contains("CodeBlock { content: \"fn main() {\\n    println!(\\\"Hello, world!\\\");\\n}\" }"));
+    assert!(tree_str.contains("Paragraph { content: \"This is a paragraph before the code block.\""));
+    assert!(tree_str.contains("CodeBlock { content: \"fn main() {\\n    println!(\\\"Hello, world!\\\");\\n}\""));
 }
