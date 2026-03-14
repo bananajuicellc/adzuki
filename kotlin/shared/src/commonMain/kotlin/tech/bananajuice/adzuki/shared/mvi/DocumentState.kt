@@ -22,4 +22,5 @@ data class DocumentState(
 
 sealed interface DocumentIntent {
     data class UpdateText(val newText: String) : DocumentIntent
+    object SaveNow : DocumentIntent
 }

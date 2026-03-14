@@ -52,6 +52,10 @@ class DocumentViewModel(
                     }
                 }
             }
+            is DocumentIntent.SaveNow -> {
+                saveJob?.cancel()
+                onSave?.invoke(_state.value.text)
+            }
         }
     }
 

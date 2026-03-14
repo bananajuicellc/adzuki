@@ -371,8 +371,6 @@ class MainActivity : ComponentActivity() {
                             val uri = Uri.parse(fileUri)
                             val file = DocumentFile.fromSingleUri(context, uri)
 
-                            BackHandler { viewModel.processIntent(MainIntent.NavigateBack) }
-
                             val initialText = remember(fileUri) {
                                 try {
                                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -410,13 +408,21 @@ class MainActivity : ComponentActivity() {
                             }
                             val editorState by docViewModel.state.collectAsState()
 
+                            BackHandler {
+                                docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
+                                viewModel.processIntent(MainIntent.NavigateBack)
+                            }
+
                             Scaffold(
                                 topBar = {
                                     @OptIn(ExperimentalMaterial3Api::class)
                                     TopAppBar(
                                         title = { Text(file?.name ?: "Editor") },
                                         navigationIcon = {
-                                            IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
+                                            IconButton(onClick = {
+                                                docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
+                                                viewModel.processIntent(MainIntent.NavigateBack)
+                                            }) {
                                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                                             }
                                         }
