@@ -56,6 +56,17 @@ class DocumentViewModel(
                 saveJob?.cancel()
                 onSave?.invoke(_state.value.text)
             }
+            is DocumentIntent.ToggleFold -> {
+                _state.update { currentState ->
+                    val newFoldedIds = currentState.foldedHeadingIds.toMutableSet()
+                    if (newFoldedIds.contains(intent.headingIndex)) {
+                        newFoldedIds.remove(intent.headingIndex)
+                    } else {
+                        newFoldedIds.add(intent.headingIndex)
+                    }
+                    currentState.copy(foldedHeadingIds = newFoldedIds)
+                }
+            }
         }
     }
 
