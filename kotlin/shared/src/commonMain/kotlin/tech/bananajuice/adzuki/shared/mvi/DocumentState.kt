@@ -10,17 +10,25 @@ sealed interface DocumentNode {
     val span: Span
 }
 
-data class HeadingNode(val level: Int, val content: String, override val span: Span) : DocumentNode
+data class HeadingNode(
+    val level: Int,
+    val content: String,
+    override val span: Span,
+    val treeIndex: List<Int> = emptyList() // Added tree index for stable identification
+) : DocumentNode
+
 data class ParagraphNode(val content: String, override val span: Span) : DocumentNode
 data class CodeBlockNode(val content: String, override val span: Span) : DocumentNode
 data class BeancountNode(override val span: Span) : DocumentNode
 
 data class DocumentState(
     val text: String = "",
-    val nodes: List<DocumentNode> = emptyList()
+    val nodes: List<DocumentNode> = emptyList(),
+    val foldedHeadingIds: Set<List<Int>> = emptySet() // Set of folded heading tree indices
 )
 
 sealed interface DocumentIntent {
     data class UpdateText(val newText: String) : DocumentIntent
     object SaveNow : DocumentIntent
+    data class ToggleFold(val headingIndex: List<Int>) : DocumentIntent // Intent to toggle folding
 }

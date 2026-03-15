@@ -323,9 +323,34 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 }
 
 fun mapParseTreeToNodes(tree: ParseTree): List<DocumentNode> {
+    val levelCounts = mutableMapOf<Int, Int>()
+    var currentLevel = 0
+
     return tree.nodes.map { node ->
         when (node) {
-            is AstNode.Heading -> HeadingNode(level = node.level.toInt(), content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
+            is AstNode.Heading -> {
+                val level = node.level.toInt()
+                if (level < currentLevel) {
+                    for (i in level + 1..currentLevel) {
+                        levelCounts.remove(i)
+                    }
+                }
+                currentLevel = level
+                val count = levelCounts.getOrDefault(level, 0)
+                levelCounts[level] = count + 1
+
+                val finalTreeIndex = mutableListOf<Int>()
+                for (i in 1..level) {
+                    finalTreeIndex.add(maxOf(0, levelCounts.getOrDefault(i, 1) - 1))
+                }
+
+                HeadingNode(
+                    level = level,
+                    content = node.content,
+                    span = Span(node.span.start.toInt(), node.span.end.toInt()),
+                    treeIndex = finalTreeIndex
+                )
+            }
             is AstNode.Paragraph -> ParagraphNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
             is AstNode.CodeBlock -> CodeBlockNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
             is AstNode.Beancount -> BeancountNode(span = Span(node.span.start.toInt(), node.span.end.toInt()))
