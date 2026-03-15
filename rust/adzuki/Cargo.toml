@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 logos = "0.16"
 nom = "7"
+rust_decimal = "1.40.0"
 uniffi = { version = "0.31.0", features = ["cli"] }
 
 [[bin]]
@@ -18,3 +19,6 @@ path = "src/uniffi_bindgen.rs"
 [[bin]]
 name = "bean-check"
 path = "src/bin/bean-check.rs"
+
+[dev-dependencies]
+rust_decimal_macros = "1.40.0"

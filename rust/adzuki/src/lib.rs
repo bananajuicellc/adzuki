@@ -3,6 +3,8 @@ pub mod parser;
 pub mod beancount_parser;
 pub mod plugin;
 pub mod ast;
+pub mod core;
+pub mod validator;
 
 use crate::plugin::{Plugin, MarkdownPlugin};
 use crate::lexer::{lex_core, lex_beancount, CoreToken, SpannedToken};

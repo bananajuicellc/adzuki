@@ -4,6 +4,7 @@ use std::process;
 use adzuki::plugin::process_markdown_stream;
 use adzuki::lexer::lex_beancount;
 use adzuki::beancount_parser::parse_beancount;
+use adzuki::validator::validate_beancount;
 
 fn get_line_and_col(source: &str, byte_offset: usize) -> (usize, usize) {
     let mut line = 1;
@@ -37,7 +38,10 @@ fn main() {
 
     let processed_source = process_markdown_stream(filepath, &source);
     let tokens = lex_beancount(&processed_source);
-    let (_, errors) = parse_beancount(&processed_source, &tokens);
+    let (nodes, mut errors) = parse_beancount(&processed_source, &tokens);
+
+    let validation_errors = validate_beancount(&nodes);
+    errors.extend(validation_errors);
 
     let mut has_errors = false;
     for error in &errors {
