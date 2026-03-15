@@ -3,7 +3,7 @@
 
     <application android:name=".AdzukiApplication"
         android:allowBackup="true"
-        android:label="Adzuki"
+        android:label="Black Bean"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

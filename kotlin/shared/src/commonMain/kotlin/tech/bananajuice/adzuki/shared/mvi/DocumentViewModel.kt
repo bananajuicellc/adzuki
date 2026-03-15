@@ -15,6 +15,8 @@ class DocumentViewModel(
     private val parseDebounceMs: Long = 300L,
     private val saveDebounceMs: Long = 3000L,
     private val coroutineScope: CoroutineScope,
+    private val documentId: String? = null,
+    private val foldStateRepository: FoldStateRepository? = null,
     private val parserProxy: (String) -> List<DocumentNode>,
     private val onSave: ((String) -> Unit)? = null
 ) {
@@ -28,6 +30,15 @@ class DocumentViewModel(
         // Initial parse
         if (initialState.text.isNotEmpty()) {
             parseText(initialState.text)
+        }
+
+        if (documentId != null && foldStateRepository != null) {
+            coroutineScope.launch(Dispatchers.Default) {
+                val foldedIds = foldStateRepository.getFoldedHeadings(documentId)
+                _state.update { currentState ->
+                    currentState.copy(foldedHeadingIds = foldedIds)
+                }
+            }
         }
     }
 
@@ -61,8 +72,14 @@ class DocumentViewModel(
                     val newFoldedIds = currentState.foldedHeadingIds.toMutableSet()
                     if (newFoldedIds.contains(intent.headingIndex)) {
                         newFoldedIds.remove(intent.headingIndex)
+                        if (documentId != null && foldStateRepository != null) {
+                            coroutineScope.launch(Dispatchers.Default) { foldStateRepository.removeFoldedHeading(documentId, intent.headingIndex) }
+                        }
                     } else {
                         newFoldedIds.add(intent.headingIndex)
+                        if (documentId != null && foldStateRepository != null) {
+                            coroutineScope.launch(Dispatchers.Default) { foldStateRepository.addFoldedHeading(documentId, intent.headingIndex) }
+                        }
                     }
                     currentState.copy(foldedHeadingIds = newFoldedIds)
                 }

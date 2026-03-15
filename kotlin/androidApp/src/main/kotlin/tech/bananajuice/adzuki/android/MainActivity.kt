@@ -411,6 +411,8 @@ class MainActivity : ComponentActivity() {
                                 DocumentViewModel(
                                     initialState = DocumentState(text = initialText),
                                     coroutineScope = coroutineScope,
+                                    documentId = fileUri,
+                                    foldStateRepository = (application as AdzukiApplication).foldStateRepository,
                                     parserProxy = { text ->
                                         val parseTree = parseToTree(text)
                                         mapParseTreeToNodes(parseTree)
