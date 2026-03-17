@@ -61,3 +61,13 @@ fn test_bean_check_account_validation() {
     // Check for closed account
     assert!(stderr_str.contains("Validation error for Transaction on 2024-01-04: Account Expenses:Food is closed"), "stderr missing 'Account Expenses:Food is closed', got:\n{}", stderr_str);
 }
+
+#[test]
+fn test_bean_check_unsorted_open() {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["run", "--bin", "bean-check", "--", "tests/fixtures/unsorted_open.md"]);
+
+    let output = cmd.output().expect("Failed to execute bean-check");
+
+    assert!(output.status.success(), "Expected bean-check to succeed on unsorted_open.md due to sorting in validator, but it failed\nstdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+}

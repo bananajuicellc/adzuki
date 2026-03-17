@@ -9,7 +9,24 @@ pub fn validate_beancount(nodes: &[BeancountNode]) -> Vec<BeancountParseError> {
     let mut open_accounts = HashSet::new();
     let mut closed_accounts = HashSet::new();
 
-    for node in nodes {
+    let mut sorted_nodes: Vec<&BeancountNode> = nodes.iter().collect();
+    sorted_nodes.sort_by(|a, b| {
+        let date_a: &str = match a {
+            BeancountNode::OptionDirective { .. } => "",
+            BeancountNode::OpenDirective { date, .. } => date.as_str(),
+            BeancountNode::CloseDirective { date, .. } => date.as_str(),
+            BeancountNode::Transaction { date, .. } => date.as_str(),
+        };
+        let date_b: &str = match b {
+            BeancountNode::OptionDirective { .. } => "",
+            BeancountNode::OpenDirective { date, .. } => date.as_str(),
+            BeancountNode::CloseDirective { date, .. } => date.as_str(),
+            BeancountNode::Transaction { date, .. } => date.as_str(),
+        };
+        date_a.cmp(date_b)
+    });
+
+    for node in sorted_nodes {
         match node {
             BeancountNode::OpenDirective { date: _, account, .. } => {
                 open_accounts.insert(account.clone());
