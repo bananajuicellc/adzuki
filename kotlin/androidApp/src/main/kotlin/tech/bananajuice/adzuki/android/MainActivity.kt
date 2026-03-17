@@ -35,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
@@ -139,6 +140,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     if (fileToOpen != null) {
                         _state.update { it.copy(currentScreen = Screen.Editor(fileToOpen, journalUriStr)) }
+                        loadFiles(journalUriStr)
                     } else {
                         _state.update { it.copy(currentScreen = Screen.FileList(journalUriStr)) }
                         loadFiles(journalUriStr)
@@ -157,6 +159,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                             // Update state on Main Thread implicitly by flow collection
                             _state.update { it.copy(currentScreen = Screen.Editor(newFile.uri.toString(), newDir.uri.toString())) }
+                            loadFiles(newDir.uri.toString())
                             // Reload journals so the new one is listed if they go back
                             loadJournals(intent.rootUri)
                         }
@@ -299,7 +302,6 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     val journalUri = (state.currentScreen as? Screen.FileList)?.journalUri ?: return
     val context = LocalContext.current
     val journalFolder = remember(journalUri) { DocumentFile.fromTreeUri(context, Uri.parse(journalUri)) }
-    var selectedTab by remember { mutableIntStateOf(0) }
 
     BackHandler { onIntent(MainIntent.NavigateBack) }
 
@@ -316,24 +318,16 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Files") })
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Reports") })
-            }
-            if (selectedTab == 0) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(state.files) { file ->
-                        Text(
-                            text = file.name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onIntent(MainIntent.OpenFile(file.uri, journalUri)) }
-                                .padding(16.dp)
-                        )
-                    }
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(state.files) { file ->
+                    Text(
+                        text = file.name,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onIntent(MainIntent.OpenFile(file.uri, journalUri)) }
+                            .padding(16.dp)
+                    )
                 }
-            } else if (selectedTab == 1) {
-                ReportsScreen(state = state)
             }
         }
     }
@@ -464,6 +458,7 @@ class MainActivity : ComponentActivity() {
                             onIntent = viewModel::processIntent
                         )
                         is Screen.Editor -> {
+                            var selectedTab by remember { mutableIntStateOf(0) }
                             val fileUri = currentScreen.fileUri
                             val context = LocalContext.current
                             val uri = Uri.parse(fileUri)
@@ -523,17 +518,30 @@ class MainActivity : ComponentActivity() {
                                                 docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
                                                 viewModel.processIntent(MainIntent.NavigateBack)
                                             }) {
-                                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
                                             }
                                         }
                                     )
                                 }
                             ) { padding ->
-                                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-                                    DocumentEditor(
-                                        state = editorState,
-                                        onIntent = docViewModel::processIntent
-                                    )
+                                Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+                                    TabRow(selectedTabIndex = selectedTab) {
+                                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Editor") })
+                                        Tab(selected = selectedTab == 1, onClick = {
+                                            docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
+                                            selectedTab = 1
+                                        }, text = { Text("Reports") })
+                                    }
+                                    if (selectedTab == 0) {
+                                        Box(modifier = Modifier.fillMaxSize()) {
+                                            DocumentEditor(
+                                                state = editorState,
+                                                onIntent = docViewModel::processIntent
+                                            )
+                                        }
+                                    } else if (selectedTab == 1) {
+                                        ReportsScreen(state = state)
+                                    }
                                 }
                             }
                         }
