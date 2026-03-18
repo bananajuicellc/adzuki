@@ -42,3 +42,32 @@ fn test_bean_check_unbalanced() {
     assert!(stderr_str.contains("Validation error for Transaction on 2023-01-01 Test Multiple missing amounts"), "stderr missing 'Multiple missing amounts' validation error, got:\n{}", stderr_str);
     assert!(stderr_str.contains("more than one posting with missing amount"), "stderr missing 'more than one posting with missing amount' error, got:\n{}", stderr_str);
 }
+
+#[test]
+fn test_bean_check_account_validation() {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["run", "--bin", "bean-check", "--", "tests/fixtures/closed_account.md"]);
+
+    let output = cmd.output().expect("Failed to execute bean-check");
+
+    assert!(!output.status.success(), "Expected bean-check to fail on closed_account.md, got success");
+
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+    // Check for missing account (not open)
+    assert!(stderr_str.contains("Account Assets:Cash is not open"), "stderr missing 'Account Assets:Cash is not open', got:\n{}", stderr_str);
+    assert!(stderr_str.contains("Account Income:Gifts is not open"), "stderr missing 'Account Income:Gifts is not open', got:\n{}", stderr_str);
+
+    // Check for closed account
+    assert!(stderr_str.contains("Validation error for Transaction on 2024-01-04: Account Expenses:Food is closed"), "stderr missing 'Account Expenses:Food is closed', got:\n{}", stderr_str);
+}
+
+#[test]
+fn test_bean_check_unsorted_open() {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["run", "--bin", "bean-check", "--", "tests/fixtures/unsorted_open.md"]);
+
+    let output = cmd.output().expect("Failed to execute bean-check");
+
+    assert!(output.status.success(), "Expected bean-check to succeed on unsorted_open.md due to sorting in validator, but it failed\nstdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+}

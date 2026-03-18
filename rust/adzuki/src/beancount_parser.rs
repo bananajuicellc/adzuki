@@ -178,6 +178,27 @@ pub fn parse_open_directive<'a>(
     }
 }
 
+pub fn parse_close_directive<'a>(
+    source: &'a str,
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, BeancountNode, Error<TokenSlice<'a>>> {
+    move |i: TokenSlice<'a>| {
+        let (i, _) = skip_whitespace()(i)?;
+        let (i, date_tok) = match_token(BeancountToken::Date)(i)?;
+        let (i, _) = skip_inline_whitespace()(i)?;
+        let (i, _) = match_token(BeancountToken::CloseDirective)(i)?;
+        let (i, _) = skip_inline_whitespace()(i)?;
+        let (i, acc_tok) = match_token(BeancountToken::Account)(i)?;
+
+        Ok((
+            i,
+            BeancountNode::CloseDirective {
+                date: source[date_tok.1.clone()].to_string(),
+                account: source[acc_tok.1.clone()].to_string(),
+            },
+        ))
+    }
+}
+
 pub fn parse_posting<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, Posting, Error<TokenSlice<'a>>> {
@@ -318,6 +339,10 @@ pub fn parse_beancount<'a>(
 
         if !i.0.is_empty() && i.0[0].0 == BeancountToken::Date {
             if let Ok((next_i, node)) = parse_open_directive(source)(i.clone()) {
+                nodes.push(node);
+                i = next_i;
+                continue;
+            } else if let Ok((next_i, node)) = parse_close_directive(source)(i.clone()) {
                 nodes.push(node);
                 i = next_i;
                 continue;

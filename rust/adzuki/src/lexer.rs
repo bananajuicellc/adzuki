@@ -60,6 +60,9 @@ pub enum BeancountToken {
     #[token("open")]
     OpenDirective,
 
+    #[token("close")]
+    CloseDirective,
+
     #[token("*")]
     #[token("!")]
     #[token("txn")]
