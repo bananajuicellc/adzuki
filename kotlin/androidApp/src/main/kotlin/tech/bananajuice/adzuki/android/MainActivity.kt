@@ -125,43 +125,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             is MainIntent.OpenJournal -> {
                 viewModelScope.launch(Dispatchers.IO) {
-                    val journalUriStr = intent.journalUri
-                    val mainFileUriStr = prefs.getString("main_file_$journalUriStr", null)
+                    try {
+                        val journalUriStr = intent.journalUri
+                        val mainFileUriStr = prefs.getString("main_file_$journalUriStr", null)
 
-                    val fileToOpen = if (mainFileUriStr != null && DocumentFile.fromSingleUri(getApplication(), Uri.parse(mainFileUriStr))?.exists() == true) {
-                        mainFileUriStr
-                    } else {
-                        val folder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUriStr))
-                        val files = folder?.listFiles() ?: emptyArray()
-                        val mainBeancountMd = files.find { it.name == "main.beancount.md" }
-                        val mainBeancount = files.find { it.name == "main.beancount" }
-                        mainBeancountMd?.uri?.toString() ?: mainBeancount?.uri?.toString()
-                    }
+                        val fileToOpen = if (mainFileUriStr != null && DocumentFile.fromSingleUri(getApplication(), Uri.parse(mainFileUriStr))?.exists() == true) {
+                            mainFileUriStr
+                        } else {
+                            val folder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUriStr))
+                            val files = folder?.listFiles() ?: emptyArray()
+                            val mainBeancountMd = files.find { it.name == "main.beancount.md" }
+                            val mainBeancount = files.find { it.name == "main.beancount" }
+                            mainBeancountMd?.uri?.toString() ?: mainBeancount?.uri?.toString()
+                        }
 
-                    if (fileToOpen != null) {
-                        _state.update { it.copy(currentScreen = Screen.Editor(fileToOpen, journalUriStr)) }
-                        loadFiles(journalUriStr)
-                    } else {
-                        _state.update { it.copy(currentScreen = Screen.FileList(journalUriStr)) }
-                        loadFiles(journalUriStr)
+                        if (fileToOpen != null) {
+                            _state.update { it.copy(currentScreen = Screen.Editor(fileToOpen, journalUriStr)) }
+                            loadFiles(journalUriStr)
+                        } else {
+                            _state.update { it.copy(currentScreen = Screen.FileList(journalUriStr)) }
+                            loadFiles(journalUriStr)
+                        }
+                    } catch (e: Exception) {
+                        if (e is SecurityException) {
+                            prefs.edit().remove("root_folder_uri").apply()
+                            _state.update { it.copy(currentScreen = Screen.SelectFolder) }
+                        }
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            Toast.makeText(getApplication(), "Error opening journal: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
             is MainIntent.CreateJournal -> {
                 viewModelScope.launch(Dispatchers.IO) {
-                    val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(intent.rootUri))
-                    val newDir = rootFolder?.createDirectory(intent.name)
-                    if (newDir != null) {
-                        val newFile = newDir.createFile("text/markdown", "main.beancount.md")
-                        if (newFile != null) {
-                            getApplication<Application>().contentResolver.openOutputStream(newFile.uri)?.use {
-                                it.write("# ${intent.name}\n\n".toByteArray())
+                    try {
+                        val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(intent.rootUri))
+                        val newDir = rootFolder?.createDirectory(intent.name)
+                        if (newDir != null) {
+                            val newFile = newDir.createFile("text/markdown", "main.beancount.md")
+                            if (newFile != null) {
+                                getApplication<Application>().contentResolver.openOutputStream(newFile.uri)?.use {
+                                    it.write("# ${intent.name}\n\n".toByteArray())
+                                }
+                                // Update state on Main Thread implicitly by flow collection
+                                _state.update { it.copy(currentScreen = Screen.Editor(newFile.uri.toString(), newDir.uri.toString())) }
+                                loadFiles(newDir.uri.toString())
+                                // Reload journals so the new one is listed if they go back
+                                loadJournals(intent.rootUri)
                             }
-                            // Update state on Main Thread implicitly by flow collection
-                            _state.update { it.copy(currentScreen = Screen.Editor(newFile.uri.toString(), newDir.uri.toString())) }
-                            loadFiles(newDir.uri.toString())
-                            // Reload journals so the new one is listed if they go back
-                            loadJournals(intent.rootUri)
+                        }
+                    } catch (e: Exception) {
+                        if (e is SecurityException) {
+                            prefs.edit().remove("root_folder_uri").apply()
+                            _state.update { it.copy(currentScreen = Screen.SelectFolder) }
+                        }
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            Toast.makeText(getApplication(), "Error creating journal: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -200,27 +220,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadJournals(rootUri: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(rootUri))
-            val journals = mutableListOf<JournalInfo>()
-            rootFolder?.listFiles()?.forEach { file ->
-                if (file.isDirectory) {
-                    journals.add(JournalInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
+            try {
+                val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(rootUri))
+                val journals = mutableListOf<JournalInfo>()
+                rootFolder?.listFiles()?.forEach { file ->
+                    if (file.isDirectory) {
+                        journals.add(JournalInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
+                    }
+                }
+                _state.update { it.copy(journals = journals) }
+            } catch (e: Exception) {
+                if (e is SecurityException) {
+                    prefs.edit().remove("root_folder_uri").apply()
+                    _state.update { it.copy(currentScreen = Screen.SelectFolder) }
+                }
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Error loading journals: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-            _state.update { it.copy(journals = journals) }
         }
     }
 
     private fun loadFiles(journalUri: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val journalFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUri))
-            val filesList = mutableListOf<FileInfo>()
-            journalFolder?.listFiles()?.forEach { file ->
-                if (file.isFile) {
-                    filesList.add(FileInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
+            try {
+                val journalFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUri))
+                val filesList = mutableListOf<FileInfo>()
+                journalFolder?.listFiles()?.forEach { file ->
+                    if (file.isFile) {
+                        filesList.add(FileInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
+                    }
+                }
+                _state.update { it.copy(files = filesList) }
+            } catch (e: Exception) {
+                if (e is SecurityException) {
+                    prefs.edit().remove("root_folder_uri").apply()
+                    _state.update { it.copy(currentScreen = Screen.SelectFolder) }
+                }
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Error loading files: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-            _state.update { it.copy(files = filesList) }
         }
     }
 }
@@ -301,14 +341,20 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     val journalUri = (state.currentScreen as? Screen.FileList)?.journalUri ?: return
     val context = LocalContext.current
-    val journalFolder = remember(journalUri) { DocumentFile.fromTreeUri(context, Uri.parse(journalUri)) }
+    val journalFolder = remember(journalUri) {
+        try {
+            DocumentFile.fromTreeUri(context, Uri.parse(journalUri))
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     BackHandler { onIntent(MainIntent.NavigateBack) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(journalFolder?.name ?: "Files") },
+                title = { Text(runCatching { journalFolder?.name }.getOrNull() ?: "Files") },
                 navigationIcon = {
                     IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -462,7 +508,11 @@ class MainActivity : ComponentActivity() {
                             val fileUri = currentScreen.fileUri
                             val context = LocalContext.current
                             val uri = Uri.parse(fileUri)
-                            val file = DocumentFile.fromSingleUri(context, uri)
+                            val file = try {
+                                DocumentFile.fromSingleUri(context, uri)
+                            } catch (e: Exception) {
+                                null
+                            }
 
                             val initialText = remember(fileUri) {
                                 try {
@@ -470,6 +520,7 @@ class MainActivity : ComponentActivity() {
                                         inputStream.bufferedReader().use { it.readText() }
                                     } ?: ""
                                 } catch (e: Exception) {
+                                    Toast.makeText(context, "Error reading file: ${e.message}", Toast.LENGTH_SHORT).show()
                                     ""
                                 }
                             }
@@ -512,7 +563,7 @@ class MainActivity : ComponentActivity() {
                                 topBar = {
                                     @OptIn(ExperimentalMaterial3Api::class)
                                     TopAppBar(
-                                        title = { Text(file?.name ?: "Editor") },
+                                        title = { Text(runCatching { file?.name }.getOrNull() ?: "Editor") },
                                         navigationIcon = {
                                             IconButton(onClick = {
                                                 docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
