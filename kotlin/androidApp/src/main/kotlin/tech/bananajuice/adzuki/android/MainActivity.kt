@@ -129,8 +129,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val journalUriStr = intent.journalUri
                         val mainFileUriStr = prefs.getString("main_file_$journalUriStr", null)
 
-                        val fileToOpen = if (mainFileUriStr != null && DocumentFile.fromSingleUri(getApplication(), Uri.parse(mainFileUriStr))?.exists() == true) {
-                            mainFileUriStr
+                        val fileToOpen = try {
+                            if (mainFileUriStr != null && DocumentFile.fromSingleUri(getApplication(), Uri.parse(mainFileUriStr))?.exists() == true) {
+                                mainFileUriStr
+                            } else null
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        val finalFileToOpen = if (fileToOpen != null) {
+                            fileToOpen
                         } else {
                             val folder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUriStr))
                             val files = folder?.listFiles() ?: emptyArray()
@@ -139,8 +147,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             mainBeancountMd?.uri?.toString() ?: mainBeancount?.uri?.toString()
                         }
 
-                        if (fileToOpen != null) {
-                            _state.update { it.copy(currentScreen = Screen.Editor(fileToOpen, journalUriStr)) }
+                        if (finalFileToOpen != null) {
+                            _state.update { it.copy(currentScreen = Screen.Editor(finalFileToOpen, journalUriStr)) }
                             loadFiles(journalUriStr)
                         } else {
                             _state.update { it.copy(currentScreen = Screen.FileList(journalUriStr)) }
