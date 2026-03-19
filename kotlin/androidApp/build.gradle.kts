@@ -5,6 +5,20 @@ plugins {
     kotlin("android")
     id("com.google.devtools.ksp")
     kotlin("plugin.compose")
+    id("dev.gobley.cargo") version "0.3.7"
+    id("dev.gobley.uniffi") version "0.3.7"
+    kotlin("plugin.atomicfu") version "2.1.0"
+}
+
+cargo {
+    packageDirectory = layout.projectDirectory.dir("../../rust/adzuki")
+}
+
+uniffi {
+    generateFromLibrary {
+        namespace = "adzuki"
+        packageName = "uniffi.adzuki"
+    }
 }
 
 android {
@@ -51,7 +65,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
-    implementation("net.java.dev.jna:jna:5.13.0@aar")
     testImplementation("junit:junit:4.13.2")
 
     val roomVersion = "2.6.1"
