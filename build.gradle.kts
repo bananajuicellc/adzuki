@@ -1,8 +1,9 @@
 plugins {
-    kotlin("multiplatform") version "1.9.22" apply false
-    kotlin("android") version "1.9.22" apply false
-    id("com.android.application") version "8.2.0" apply false
-    id("com.android.library") version "8.2.0" apply false
-    id("org.jetbrains.compose") version "1.6.0" apply false
-    id("com.google.devtools.ksp") version "1.9.22-1.0.17" apply false
+    kotlin("multiplatform") version "2.1.0" apply false
+    kotlin("android") version "2.1.0" apply false
+    kotlin("plugin.compose") version "2.1.0" apply false
+    id("com.android.application") version "8.7.3" apply false
+    id("com.android.library") version "8.7.3" apply false
+    id("org.jetbrains.compose") version "1.7.1" apply false
+    id("com.google.devtools.ksp") version "2.1.0-1.0.29" apply false
 }

@@ -1,15 +1,16 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     kotlin("multiplatform")
     id("com.android.library")
     id("org.jetbrains.compose")
+    kotlin("plugin.compose")
 }
 
 kotlin {
     androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "1.8"
-            }
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_1_8)
         }
     }
 
@@ -17,11 +18,11 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material3)
-                implementation(compose.ui)
-                implementation(compose.components.resources)
-                implementation(compose.components.uiToolingPreview)
+                implementation("org.jetbrains.compose.foundation:foundation:1.10.2")
+                implementation("org.jetbrains.compose.material3:material3:1.9.0-beta03")
+                implementation("org.jetbrains.compose.ui:ui:1.10.2")
+                implementation("org.jetbrains.compose.components:components-resources:1.10.2")
+                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.2")
             }
         }
         val commonTest by getting {
@@ -35,7 +36,7 @@ kotlin {
 
 android {
     namespace = "tech.bananajuice.adzuki.shared"
-    compileSdk = 34
+    compileSdk = 36
     defaultConfig {
         minSdk = 24
     }
