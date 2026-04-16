@@ -359,7 +359,7 @@ fun ReportsScreen(state: MainState) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error reading balances: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Error reading balances.", Toast.LENGTH_SHORT).show()
                 }
                 balances = emptyList()
             }
@@ -494,7 +494,7 @@ class MainActivity : ComponentActivity() {
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
                                                 coroutineScope.launch(Dispatchers.Main) {
-                                                    Toast.makeText(context, "Error saving document: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Error saving document.", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
