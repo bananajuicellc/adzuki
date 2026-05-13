@@ -1,24 +1,24 @@
 use std::collections::HashSet;
 
-use crate::ast::BeancountNode;
+use crate::ast::{BeancountNode, DirectiveWrapper};
 use crate::beancount_parser::BeancountParseError;
 use crate::core::Transaction;
 
-pub fn validate_beancount(nodes: &[BeancountNode]) -> Vec<BeancountParseError> {
+pub fn validate_beancount(nodes: &[DirectiveWrapper]) -> Vec<BeancountParseError> {
     let mut errors = Vec::new();
     let mut open_accounts = HashSet::new();
     let mut closed_accounts = HashSet::new();
 
-    let mut sorted_nodes: Vec<&BeancountNode> = nodes.iter().collect();
+    let mut sorted_nodes: Vec<&DirectiveWrapper> = nodes.iter().collect();
     sorted_nodes.sort_by(|a, b| {
-        let date_a: &str = match a {
-            BeancountNode::OptionDirective { .. } => "",
+        let date_a: &str = match &a.directive {
+            BeancountNode::OptionDirective { .. } | BeancountNode::Empty => "",
             BeancountNode::OpenDirective { date, .. } => date.as_str(),
             BeancountNode::CloseDirective { date, .. } => date.as_str(),
             BeancountNode::Transaction { date, .. } => date.as_str(),
         };
-        let date_b: &str = match b {
-            BeancountNode::OptionDirective { .. } => "",
+        let date_b: &str = match &b.directive {
+            BeancountNode::OptionDirective { .. } | BeancountNode::Empty => "",
             BeancountNode::OpenDirective { date, .. } => date.as_str(),
             BeancountNode::CloseDirective { date, .. } => date.as_str(),
             BeancountNode::Transaction { date, .. } => date.as_str(),
@@ -26,8 +26,8 @@ pub fn validate_beancount(nodes: &[BeancountNode]) -> Vec<BeancountParseError> {
         date_a.cmp(date_b)
     });
 
-    for node in sorted_nodes {
-        match node {
+    for wrapper in sorted_nodes {
+        match &wrapper.directive {
             BeancountNode::OpenDirective { date: _, account, .. } => {
                 open_accounts.insert(account.clone());
                 closed_accounts.remove(account);
