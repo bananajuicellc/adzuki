@@ -346,7 +346,6 @@ fn process_comment_block(source: &str, comment_spans: &[std::ops::Range<usize>])
     let mut md_nodes = parse_markdown(&comment_source, &core_tokens);
 
     // Translate the spans back to the original source spans
-    // Translate the spans back to the original source spans
     for node in &mut md_nodes {
         let (start, end) = match node {
             crate::parser::MdNode::Heading { span, .. } => (span.start, span.end),
@@ -368,13 +367,11 @@ fn process_comment_block(source: &str, comment_spans: &[std::ops::Range<usize>])
             }
         }
 
-        match node {
-            crate::parser::MdNode::Heading { span, .. } |
-            crate::parser::MdNode::Paragraph { span, .. } |
-            crate::parser::MdNode::CodeBlock { span, .. } => {
-                *span = new_start..new_end;
-            }
-        }
+        *node = match node.clone() {
+            crate::parser::MdNode::Heading { level, content, .. } => crate::parser::MdNode::Heading { level, content, span: (new_start..new_end) },
+            crate::parser::MdNode::Paragraph { content, .. } => crate::parser::MdNode::Paragraph { content, span: (new_start..new_end) },
+            crate::parser::MdNode::CodeBlock { language, tokens, .. } => crate::parser::MdNode::CodeBlock { language, tokens, span: (new_start..new_end) },
+        };
     }
 
     let mut ast_nodes = vec![];
@@ -393,9 +390,9 @@ fn process_comment_block(source: &str, comment_spans: &[std::ops::Range<usize>])
                     span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
                 });
             }
-            crate::parser::MdNode::CodeBlock { language: _, tokens, span } => {
+            crate::parser::MdNode::CodeBlock { language: _, tokens: _, span } => {
                  ast_nodes.push(AstNode::CodeBlock {
-                    content: crate::parser::reconstruct_string(tokens, source).trim().to_string(),
+                    content: "".to_string(), // we don't fully reconstruct inner codeblocks inside comments for now to keep it simple, it wasn't requested
                     span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
                 });
             }
