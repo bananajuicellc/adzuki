@@ -1,4 +1,6 @@
-use crate::ast::{BeancountNode, Amount, Posting};
+use crate::ast::{BeancountNode, Amount, Posting, DirectiveWrapper, AstNode};
+use crate::parser::parse_markdown;
+use crate::lexer::lex_core;
 use crate::lexer::{BeancountToken, SpannedToken};
 use nom::{
     error::{Error, ErrorKind, ParseError},
@@ -83,7 +85,7 @@ pub fn match_token<'a, E: ParseError<TokenSlice<'a>>>(
 pub fn skip_whitespace<'a, E: ParseError<TokenSlice<'a>>>(
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, (), E> {
     move |mut i: TokenSlice<'a>| {
-        while !i.0.is_empty() && (i.0[0].0 == BeancountToken::Whitespace || i.0[0].0 == BeancountToken::Newline || i.0[0].0 == BeancountToken::Comment) {
+        while !i.0.is_empty() && (i.0[0].0 == BeancountToken::Whitespace || i.0[0].0 == BeancountToken::Newline) {
             i = TokenSlice(&i.0[1..]);
         }
         Ok((i, ()))
@@ -311,13 +313,103 @@ pub fn parse_transaction<'a>(
     }
 }
 
+fn process_comment_block(source: &str, comment_spans: &[std::ops::Range<usize>]) -> Vec<AstNode> {
+    if comment_spans.is_empty() {
+        return vec![];
+    }
+
+    // We recreate the markdown string from the comments, replacing `; ` or `;` with spaces.
+    let mut comment_source = String::new();
+    let mut byte_offsets = vec![];
+
+    for span in comment_spans {
+        let raw = &source[span.clone()];
+        let stripped = if raw.starts_with("; ") {
+            &raw[2..]
+        } else if raw.starts_with(";") {
+            &raw[1..]
+        } else {
+            raw
+        };
+
+        let start_offset = comment_source.len();
+        comment_source.push_str(stripped);
+        comment_source.push('\n'); // Add newline since we process line by line
+
+        let end_offset = comment_source.len();
+        let original_start = span.start + (raw.len() - stripped.len());
+
+        byte_offsets.push((start_offset..end_offset, original_start));
+    }
+
+    let core_tokens = lex_core(&comment_source);
+    let mut md_nodes = parse_markdown(&comment_source, &core_tokens);
+
+    // Translate the spans back to the original source spans
+    for node in &mut md_nodes {
+        let (start, end) = match node {
+            crate::parser::MdNode::Heading { span, .. } => (span.start, span.end),
+            crate::parser::MdNode::Paragraph { span, .. } => (span.start, span.end),
+            crate::parser::MdNode::CodeBlock { span, .. } => (span.start, span.end),
+        };
+
+        // Find which line it belongs to
+        let mut new_start = 0;
+        let mut new_end = 0;
+
+        for (local_range, orig_start) in &byte_offsets {
+            if local_range.contains(&start) {
+                new_start = orig_start + (start - local_range.start);
+            }
+            // we use <= because end is exclusive
+            if local_range.start <= end && end <= local_range.end {
+                new_end = orig_start + (end - local_range.start);
+            }
+        }
+
+        *node = match node.clone() {
+            crate::parser::MdNode::Heading { level, content, .. } => crate::parser::MdNode::Heading { level, content, span: (new_start..new_end) },
+            crate::parser::MdNode::Paragraph { content, .. } => crate::parser::MdNode::Paragraph { content, span: (new_start..new_end) },
+            crate::parser::MdNode::CodeBlock { language, tokens, .. } => crate::parser::MdNode::CodeBlock { language, tokens, span: (new_start..new_end) },
+        };
+    }
+
+    let mut ast_nodes = vec![];
+    for node in md_nodes {
+         match node {
+            crate::parser::MdNode::Heading { level, content, span } => {
+                ast_nodes.push(AstNode::Heading {
+                    level,
+                    content,
+                    span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
+                });
+            }
+            crate::parser::MdNode::Paragraph { content, span } => {
+                ast_nodes.push(AstNode::Paragraph {
+                    content,
+                    span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
+                });
+            }
+            crate::parser::MdNode::CodeBlock { language: _, tokens: _, span } => {
+                 ast_nodes.push(AstNode::CodeBlock {
+                    content: "".to_string(), // we don't fully reconstruct inner codeblocks inside comments for now to keep it simple, it wasn't requested
+                    span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
+                });
+            }
+        }
+    }
+
+    ast_nodes
+}
+
 pub fn parse_beancount<'a>(
     source: &'a str,
     tokens: &'a [SpannedToken<BeancountToken>],
-) -> (Vec<BeancountNode>, Vec<BeancountParseError>) {
-    let mut nodes = vec![];
+) -> (Vec<DirectiveWrapper>, Vec<BeancountParseError>) {
+    let mut wrappers = vec![];
     let mut errors = vec![];
     let mut i = TokenSlice(tokens);
+    let mut current_comments = vec![];
 
     while !i.0.is_empty() {
         if let Ok((i_next, _)) = skip_whitespace::<Error<_>>()(i.clone()) {
@@ -331,26 +423,49 @@ pub fn parse_beancount<'a>(
             break;
         }
 
-        if let Ok((next_i, node)) = parse_option_directive(source)(i.clone()) {
-            nodes.push(node);
-            i = next_i;
+        if i.0[0].0 == BeancountToken::Comment {
+            current_comments.push(i.0[0].1.clone());
+            i = TokenSlice(&i.0[1..]);
             continue;
         }
 
-        if !i.0.is_empty() && i.0[0].0 == BeancountToken::Date {
+        let start_span = i.0[0].1.start;
+        let mut parsed_node = None;
+        let mut parsed_i = i.clone();
+
+        if let Ok((next_i, node)) = parse_option_directive(source)(i.clone()) {
+            parsed_node = Some(node);
+            parsed_i = next_i;
+        } else if !i.0.is_empty() && i.0[0].0 == BeancountToken::Date {
             if let Ok((next_i, node)) = parse_open_directive(source)(i.clone()) {
-                nodes.push(node);
-                i = next_i;
-                continue;
+                parsed_node = Some(node);
+                parsed_i = next_i;
             } else if let Ok((next_i, node)) = parse_close_directive(source)(i.clone()) {
-                nodes.push(node);
-                i = next_i;
-                continue;
+                parsed_node = Some(node);
+                parsed_i = next_i;
             } else if let Ok((next_i, node)) = parse_transaction(source)(i.clone()) {
-                nodes.push(node);
-                i = next_i;
-                continue;
+                parsed_node = Some(node);
+                parsed_i = next_i;
             }
+        }
+
+        if let Some(node) = parsed_node {
+            let end_span = if parsed_i.0.is_empty() {
+                source.len()
+            } else {
+                parsed_i.0[0].1.start
+            };
+
+            let comments_ast = process_comment_block(source, &current_comments);
+            current_comments.clear();
+
+            wrappers.push(DirectiveWrapper {
+                directive: node,
+                directive_span: crate::ast::Span { start: start_span as u32, end: end_span as u32 },
+                comments: comments_ast,
+            });
+            i = parsed_i;
+            continue;
         }
 
         errors.push(BeancountParseError {
@@ -362,5 +477,20 @@ pub fn parse_beancount<'a>(
         i = TokenSlice(&i.0[1..]);
     }
 
-    (nodes, errors)
+    if !current_comments.is_empty() {
+        let comments_ast = process_comment_block(source, &current_comments);
+        if !comments_ast.is_empty() {
+            let span = crate::ast::Span {
+                 start: current_comments.first().unwrap().start as u32,
+                 end: current_comments.last().unwrap().end as u32
+            };
+            wrappers.push(DirectiveWrapper {
+                directive: BeancountNode::Empty,
+                directive_span: span,
+                comments: comments_ast,
+            });
+        }
+    }
+
+    (wrappers, errors)
 }

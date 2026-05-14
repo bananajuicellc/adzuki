@@ -133,9 +133,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         val folder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUriStr))
                         val files = folder?.listFiles() ?: emptyArray()
-                        val mainBeancountMd = files.find { it.name == "main.beancount.md" }
                         val mainBeancount = files.find { it.name == "main.beancount" }
-                        mainBeancountMd?.uri?.toString() ?: mainBeancount?.uri?.toString()
+                        val mainBeancountMd = files.find { it.name == "main.beancount.md" }
+                        mainBeancount?.uri?.toString() ?: mainBeancountMd?.uri?.toString()
                     }
 
                     if (fileToOpen != null) {
@@ -152,10 +152,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(intent.rootUri))
                     val newDir = rootFolder?.createDirectory(intent.name)
                     if (newDir != null) {
-                        val newFile = newDir.createFile("text/markdown", "main.beancount.md")
+                        val newFile = newDir.createFile("text/plain", "main.beancount")
                         if (newFile != null) {
                             getApplication<Application>().contentResolver.openOutputStream(newFile.uri)?.use {
-                                it.write("# ${intent.name}\n\n".toByteArray())
+                                it.write("; ${intent.name}\n\n".toByteArray())
                             }
                             // Update state on Main Thread implicitly by flow collection
                             _state.update { it.copy(currentScreen = Screen.Editor(newFile.uri.toString(), newDir.uri.toString())) }
@@ -335,12 +335,12 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 
 @Composable
 fun ReportsScreen(state: MainState) {
-    val mainFile = state.files.find { it.name == "main.beancount.md" }
-        ?: state.files.find { it.name == "main.beancount" }
+    val mainFile = state.files.find { it.name == "main.beancount" }
+        ?: state.files.find { it.name == "main.beancount.md" }
 
     if (mainFile == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No main.beancount.md found in journal.")
+            Text("No main.beancount found in journal.")
         }
         return
     }
@@ -393,36 +393,43 @@ fun mapParseTreeToNodes(tree: ParseTree): List<DocumentNode> {
     val levelCounts = mutableMapOf<Int, Int>()
     var currentLevel = 0
 
-    return tree.nodes.map { node ->
-        when (node) {
-            is AstNode.Heading -> {
-                val level = node.level.toInt()
-                if (level < currentLevel) {
-                    for (i in level + 1..currentLevel) {
-                        levelCounts.remove(i)
+    val flatNodes = mutableListOf<DocumentNode>()
+    for (wrapper in tree.nodes) {
+        for (node in wrapper.comments) {
+            when (node) {
+                is AstNode.Heading -> {
+                    val level = node.level.toInt()
+                    if (level < currentLevel) {
+                        for (i in level + 1..currentLevel) {
+                            levelCounts.remove(i)
+                        }
                     }
-                }
-                currentLevel = level
-                val count = levelCounts.getOrDefault(level, 0)
-                levelCounts[level] = count + 1
+                    currentLevel = level
+                    val count = levelCounts.getOrDefault(level, 0)
+                    levelCounts[level] = count + 1
 
-                val finalTreeIndex = mutableListOf<Int>()
-                for (i in 1..level) {
-                    finalTreeIndex.add(maxOf(0, levelCounts.getOrDefault(i, 1) - 1))
-                }
+                    val finalTreeIndex = mutableListOf<Int>()
+                    for (i in 1..level) {
+                        finalTreeIndex.add(maxOf(0, levelCounts.getOrDefault(i, 1) - 1))
+                    }
 
-                HeadingNode(
-                    level = level,
-                    content = node.content,
-                    span = Span(node.span.start.toInt(), node.span.end.toInt()),
-                    treeIndex = finalTreeIndex
-                )
+                    flatNodes.add(HeadingNode(
+                        level = level,
+                        content = node.content,
+                        span = Span(node.span.start.toInt(), node.span.end.toInt()),
+                        treeIndex = finalTreeIndex
+                    ))
+                }
+                is AstNode.Paragraph -> flatNodes.add(ParagraphNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt())))
+                is AstNode.CodeBlock -> flatNodes.add(CodeBlockNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt())))
             }
-            is AstNode.Paragraph -> ParagraphNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
-            is AstNode.CodeBlock -> CodeBlockNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt()))
-            is AstNode.Beancount -> BeancountNode(span = Span(node.span.start.toInt(), node.span.end.toInt()))
+        }
+
+        if (wrapper.directive !is uniffi.adzuki.BeancountNode.Empty) {
+            flatNodes.add(BeancountNode(span = Span(wrapper.directiveSpan.start.toInt(), wrapper.directiveSpan.end.toInt())))
         }
     }
+    return flatNodes
 }
 
 

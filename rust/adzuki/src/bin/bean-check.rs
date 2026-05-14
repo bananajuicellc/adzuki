@@ -1,7 +1,6 @@
 use std::env;
 use std::fs;
 use std::process;
-use adzuki::plugin::process_markdown_stream;
 use adzuki::lexer::lex_beancount;
 use adzuki::beancount_parser::parse_beancount;
 use adzuki::validator::validate_beancount;
@@ -36,9 +35,8 @@ fn main() {
         process::exit(1);
     });
 
-    let processed_source = process_markdown_stream(filepath, &source);
-    let tokens = lex_beancount(&processed_source);
-    let (nodes, mut errors) = parse_beancount(&processed_source, &tokens);
+    let tokens = lex_beancount(&source);
+    let (nodes, mut errors) = parse_beancount(&source, &tokens);
 
     let validation_errors = validate_beancount(&nodes);
     errors.extend(validation_errors);
@@ -46,7 +44,7 @@ fn main() {
     let mut has_errors = false;
     for error in &errors {
         if !error.message.contains("Unexpected token: Other") && !error.message.contains("Unexpected token: Whitespace") && !error.message.contains("Unexpected token: Newline") {
-            let (line, col) = get_line_and_col(&processed_source, error.span.start);
+            let (line, col) = get_line_and_col(&source, error.span.start);
             eprintln!("{}:{}:{}: {}", filepath, line, col, error.message);
             has_errors = true;
         }

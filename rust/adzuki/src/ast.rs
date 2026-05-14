@@ -7,8 +7,15 @@ pub struct Span {
 }
 
 #[derive(uniffi::Record, Debug, Clone)]
+pub struct DirectiveWrapper {
+    pub directive: BeancountNode,
+    pub directive_span: Span,
+    pub comments: Vec<AstNode>,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
 pub struct ParseTree {
-    pub nodes: Vec<AstNode>,
+    pub nodes: Vec<DirectiveWrapper>,
 }
 
 #[derive(uniffi::Enum, Debug, Clone)]
@@ -16,11 +23,11 @@ pub enum AstNode {
     Heading { level: u8, content: String, span: Span },
     Paragraph { content: String, span: Span },
     CodeBlock { content: String, span: Span },
-    Beancount { nodes: Vec<BeancountNode>, span: Span },
 }
 
 #[derive(uniffi::Enum, Debug, Clone)]
 pub enum BeancountNode {
+    Empty,
     OptionDirective { name: String, value: String },
     OpenDirective { date: String, account: String, currencies: Vec<String>, booking_method: Option<String> },
     CloseDirective { date: String, account: String },

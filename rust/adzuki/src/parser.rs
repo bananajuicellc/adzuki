@@ -120,7 +120,7 @@ fn take_until_newline<'a, E: ParseError<TokenSlice<'a>>>(
     }
 }
 
-fn reconstruct_string(tokens: &[SpannedToken<CoreToken>], source: &str) -> String {
+pub fn reconstruct_string(tokens: &[SpannedToken<CoreToken>], source: &str) -> String {
     let mut s = String::new();
     for (_tok, span) in tokens {
         if span.start == 0 && span.end == 0 {
