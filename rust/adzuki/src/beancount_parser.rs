@@ -393,9 +393,9 @@ fn process_comment_block(source: &str, comment_spans: &[std::ops::Range<usize>])
                     span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
                 });
             }
-            crate::parser::MdNode::CodeBlock { language: _, tokens: _, span } => {
+            crate::parser::MdNode::CodeBlock { language: _, tokens, span } => {
                  ast_nodes.push(AstNode::CodeBlock {
-                    content: "".to_string(), // we don't fully reconstruct inner codeblocks inside comments for now to keep it simple, it wasn't requested
+                    content: crate::parser::reconstruct_string(tokens, source).trim().to_string(),
                     span: crate::ast::Span { start: span.start as u32, end: span.end as u32 }
                 });
             }
