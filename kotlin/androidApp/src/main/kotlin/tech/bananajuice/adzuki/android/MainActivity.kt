@@ -152,7 +152,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(intent.rootUri))
                     val newDir = rootFolder?.createDirectory(intent.name)
                     if (newDir != null) {
-                        val newFile = newDir.createFile("text/plain", "main.beancount")
+                        val newFile = newDir.createFile("application/x-beancount", "main.beancount")
                         if (newFile != null) {
                             getApplication<Application>().contentResolver.openOutputStream(newFile.uri)?.use {
                                 it.write("; ${intent.name}\n\n".toByteArray())
