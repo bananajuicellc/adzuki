@@ -1,226 +1,97 @@
 package tech.bananajuice.adzuki.android
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import android.content.Context
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import android.net.Uri
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.Composable
-import androidx.activity.compose.BackHandler
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Tab
-import androidx.compose.runtime.mutableIntStateOf
-import uniffi.adzuki.calculateTrialBalances
-import uniffi.adzuki.AccountBalanceUi
-import androidx.compose.ui.text.font.FontWeight
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import android.widget.Toast
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import androidx.lifecycle.viewmodel.compose.viewModel
-import tech.bananajuice.adzuki.shared.mvi.BeancountNode
-import tech.bananajuice.adzuki.shared.mvi.DocumentEditor
-import tech.bananajuice.adzuki.shared.mvi.CodeBlockNode
-import tech.bananajuice.adzuki.shared.mvi.DocumentNode
-import tech.bananajuice.adzuki.shared.mvi.DocumentState
-import tech.bananajuice.adzuki.shared.mvi.DocumentViewModel
-import tech.bananajuice.adzuki.shared.mvi.HeadingNode
-import tech.bananajuice.adzuki.shared.mvi.ParagraphNode
-import tech.bananajuice.adzuki.shared.mvi.Span
-import androidx.compose.runtime.rememberCoroutineScope
-import uniffi.adzuki.AstNode
-import uniffi.adzuki.ParseTree
-import uniffi.adzuki.parseToTree
+import tech.bananajuice.adzuki.shared.automerge.*
 
 sealed class Screen {
     object SelectFolder : Screen()
-    data class JournalList(val rootUri: String) : Screen()
-    data class FileList(val journalUri: String) : Screen()
-    data class Editor(val fileUri: String, val journalUri: String) : Screen()
+    object JournalList : Screen()
+    data class FileList(val folderUri: String) : Screen()
+    data class Editor(val fileUri: String) : Screen()
 }
-
-data class JournalInfo(val name: String, val uri: String)
-data class FileInfo(val name: String, val uri: String)
 
 data class MainState(
     val currentScreen: Screen = Screen.SelectFolder,
-    val journals: List<JournalInfo> = emptyList(),
-    val files: List<FileInfo> = emptyList()
+    val openFolderUri: String? = null,
+    val rootFolders: List<String> = emptyList()
 )
 
 sealed class MainIntent {
-    data class SelectRootFolder(val uri: String) : MainIntent()
-    data class OpenJournal(val journalUri: String) : MainIntent()
-    data class CreateJournal(val rootUri: String, val name: String) : MainIntent()
-    data class OpenFile(val fileUri: String, val journalUri: String) : MainIntent()
+    data class OpenFolder(val uri: String) : MainIntent()
     object NavigateBack : MainIntent()
+    data class SelectRootFolder(val uri: String) : MainIntent()
+    data class OpenEditor(val uri: String) : MainIntent()
 }
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val prefs = application.getSharedPreferences("adzuki_prefs", Context.MODE_PRIVATE)
-
-    private val _state = MutableStateFlow(
-        MainState(
-            currentScreen = prefs.getString("root_folder_uri", null)?.let { Screen.JournalList(it) } ?: Screen.SelectFolder
-        )
-    )
-    val state = _state.asStateFlow()
-
-    init {
-        val currentScreen = _state.value.currentScreen
-        if (currentScreen is Screen.JournalList) {
-            loadJournals(currentScreen.rootUri)
-        }
-    }
+class MainViewModel : ViewModel() {
+    private val _state = MutableStateFlow(MainState())
+    val state: StateFlow<MainState> = _state.asStateFlow()
 
     fun processIntent(intent: MainIntent) {
         when (intent) {
             is MainIntent.SelectRootFolder -> {
-                prefs.edit().putString("root_folder_uri", intent.uri).apply()
-                _state.update { it.copy(currentScreen = Screen.JournalList(intent.uri)) }
-                loadJournals(intent.uri)
-            }
-            is MainIntent.OpenJournal -> {
-                viewModelScope.launch(Dispatchers.IO) {
-                    val journalUriStr = intent.journalUri
-                    val mainFileUriStr = prefs.getString("main_file_$journalUriStr", null)
-
-                    val fileToOpen = if (mainFileUriStr != null && DocumentFile.fromSingleUri(getApplication(), Uri.parse(mainFileUriStr))?.exists() == true) {
-                        mainFileUriStr
-                    } else {
-                        val folder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUriStr))
-                        val files = folder?.listFiles() ?: emptyArray()
-                        val mainBeancount = files.find { it.name == "main.beancount" }
-                        val mainBeancountMd = files.find { it.name == "main.beancount.md" }
-                        mainBeancount?.uri?.toString() ?: mainBeancountMd?.uri?.toString()
+                _state.update {
+                    val folders = it.rootFolders.toMutableList()
+                    if (!folders.contains(intent.uri)) {
+                        folders.add(intent.uri)
                     }
-
-                    if (fileToOpen != null) {
-                        _state.update { it.copy(currentScreen = Screen.Editor(fileToOpen, journalUriStr)) }
-                        loadFiles(journalUriStr)
-                    } else {
-                        _state.update { it.copy(currentScreen = Screen.FileList(journalUriStr)) }
-                        loadFiles(journalUriStr)
-                    }
+                    it.copy(rootFolders = folders, currentScreen = Screen.JournalList)
                 }
             }
-            is MainIntent.CreateJournal -> {
-                viewModelScope.launch(Dispatchers.IO) {
-                    val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(intent.rootUri))
-                    val newDir = rootFolder?.createDirectory(intent.name)
-                    if (newDir != null) {
-                        val newFile = newDir.createFile("application/x-beancount", "main.beancount")
-                        if (newFile != null) {
-                            getApplication<Application>().contentResolver.openOutputStream(newFile.uri)?.use {
-                                it.write("; ${intent.name}\n\n".toByteArray())
-                            }
-                            // Update state on Main Thread implicitly by flow collection
-                            _state.update { it.copy(currentScreen = Screen.Editor(newFile.uri.toString(), newDir.uri.toString())) }
-                            loadFiles(newDir.uri.toString())
-                            // Reload journals so the new one is listed if they go back
-                            loadJournals(intent.rootUri)
-                        }
-                    }
+            is MainIntent.OpenFolder -> {
+                _state.update {
+                    it.copy(currentScreen = Screen.FileList(intent.uri), openFolderUri = intent.uri)
                 }
             }
-            is MainIntent.OpenFile -> {
-                prefs.edit().putString("main_file_${intent.journalUri}", intent.fileUri).apply()
-                _state.update { it.copy(currentScreen = Screen.Editor(intent.fileUri, intent.journalUri)) }
+            is MainIntent.OpenEditor -> {
+                _state.update {
+                    it.copy(currentScreen = Screen.Editor(intent.uri))
+                }
             }
             is MainIntent.NavigateBack -> {
-                val currentScreen = _state.value.currentScreen
-                when (currentScreen) {
-                    is Screen.Editor -> {
-                        _state.update { it.copy(currentScreen = Screen.FileList(currentScreen.journalUri)) }
-                        loadFiles(currentScreen.journalUri)
-                    }
-                    is Screen.FileList -> {
-                        val rootUri = prefs.getString("root_folder_uri", null)
-                        if (rootUri != null) {
-                            _state.update { it.copy(currentScreen = Screen.JournalList(rootUri)) }
-                            loadJournals(rootUri)
-                        } else {
-                            _state.update { it.copy(currentScreen = Screen.SelectFolder) }
-                        }
-                    }
-                    is Screen.JournalList -> {
-                        // For root JournalList, back usually exits the app (handled by Compose / System),
-                        // but we could explicitly do nothing or handle it if needed.
-                    }
-                    is Screen.SelectFolder -> {
-                        // Do nothing
+                _state.update {
+                    when (it.currentScreen) {
+                        is Screen.Editor -> Screen.FileList(it.openFolderUri!!)
+                        is Screen.FileList -> Screen.JournalList
+                        else -> Screen.SelectFolder
+                    }.let { newScreen ->
+                        it.copy(currentScreen = newScreen)
                     }
                 }
             }
-        }
-    }
-
-    private fun loadJournals(rootUri: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val rootFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(rootUri))
-            val journals = mutableListOf<JournalInfo>()
-            rootFolder?.listFiles()?.forEach { file ->
-                if (file.isDirectory) {
-                    journals.add(JournalInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
-                }
-            }
-            _state.update { it.copy(journals = journals) }
-        }
-    }
-
-    private fun loadFiles(journalUri: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val journalFolder = DocumentFile.fromTreeUri(getApplication(), Uri.parse(journalUri))
-            val filesList = mutableListOf<FileInfo>()
-            journalFolder?.listFiles()?.forEach { file ->
-                if (file.isFile) {
-                    filesList.add(FileInfo(name = file.name ?: "Unknown", uri = file.uri.toString()))
-                }
-            }
-            _state.update { it.copy(files = filesList) }
         }
     }
 }
@@ -230,215 +101,99 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, takeFlags)
             onIntent(MainIntent.SelectRootFolder(uri.toString()))
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Button(onClick = { launcher.launch(null) }) {
-            Text("Select Folder")
+            Text("Select Journal Folder")
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    val rootUri = (state.currentScreen as? Screen.JournalList)?.rootUri ?: return
-    var showNewJournalDialog by remember { mutableStateOf(false) }
-    var newJournalName by remember { mutableStateOf("") }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Button(onClick = { showNewJournalDialog = true }, modifier = Modifier.padding(16.dp)) {
-            Text("New Journal")
-        }
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(state.journals) { journal ->
-                Text(
-                    text = journal.name,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onIntent(MainIntent.OpenJournal(journal.uri)) }
-                        .padding(16.dp)
-                )
-            }
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            onIntent(MainIntent.SelectRootFolder(uri.toString()))
         }
     }
 
-    if (showNewJournalDialog) {
-        AlertDialog(
-            onDismissRequest = { showNewJournalDialog = false },
-            title = { Text("New Journal") },
-            text = {
-                OutlinedTextField(
-                    value = newJournalName,
-                    onValueChange = { newJournalName = it },
-                    label = { Text("Name") }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onIntent(MainIntent.CreateJournal(rootUri, newJournalName))
-                    showNewJournalDialog = false
-                    newJournalName = ""
-                }) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNewJournalDialog = false }) {
-                    Text("Cancel")
-                }
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Journals") }) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { launcher.launch(null) }) {
+                Icon(Icons.Filled.FolderOpen, contentDescription = "Open Folder")
             }
-        )
+        }
+    ) { padding ->
+        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
+            items(state.rootFolders) { folderUriStr ->
+                val folderUri = Uri.parse(folderUriStr)
+                val documentFile = DocumentFile.fromTreeUri(context, folderUri)
+                ListItem(
+                    headlineContent = { Text(documentFile?.name ?: "Unknown Folder") },
+                    modifier = Modifier.clickable { onIntent(MainIntent.OpenFolder(folderUriStr)) }
+                )
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    val journalUri = (state.currentScreen as? Screen.FileList)?.journalUri ?: return
     val context = LocalContext.current
-    val journalFolder = remember(journalUri) { DocumentFile.fromTreeUri(context, Uri.parse(journalUri)) }
-
-    BackHandler { onIntent(MainIntent.NavigateBack) }
+    val folderUriStr = (state.currentScreen as Screen.FileList).folderUri
+    val folderUri = Uri.parse(folderUriStr)
+    val folderFile = DocumentFile.fromTreeUri(context, folderUri)
+    val files = folderFile?.listFiles()?.filter { it.isFile } ?: emptyList()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(journalFolder?.name ?: "Files") },
+                title = { Text(folderFile?.name ?: "Files") },
                 navigationIcon = {
                     IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Filled.Menu, contentDescription = "Back")
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = {
+                val newFile = folderFile?.createFile("application/octet-stream", "main.am")
+                if (newFile != null) {
+                    onIntent(MainIntent.OpenEditor(newFile.uri.toString()))
+                }
+            }) {
+                Icon(Icons.Filled.CreateNewFolder, contentDescription = "New File")
+            }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(state.files) { file ->
-                    Text(
-                        text = file.name,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onIntent(MainIntent.OpenFile(file.uri, journalUri)) }
-                            .padding(16.dp)
-                    )
-                }
+        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
+            items(files) { file ->
+                ListItem(
+                    headlineContent = { Text(file.name ?: "Unknown") },
+                    modifier = Modifier.clickable { onIntent(MainIntent.OpenEditor(file.uri.toString())) }
+                )
             }
         }
     }
 }
-
-@Composable
-fun ReportsScreen(state: MainState) {
-    val mainFile = state.files.find { it.name == "main.beancount" }
-        ?: state.files.find { it.name == "main.beancount.md" }
-
-    if (mainFile == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No main.beancount found in journal.")
-        }
-        return
-    }
-
-    val context = LocalContext.current
-    var balances by remember { mutableStateOf<List<AccountBalanceUi>?>(null) }
-
-    LaunchedEffect(mainFile.uri) {
-        kotlinx.coroutines.withContext(Dispatchers.IO) {
-            try {
-                val text = context.contentResolver.openInputStream(Uri.parse(mainFile.uri))?.use { inputStream ->
-                    inputStream.bufferedReader().use { it.readText() }
-                } ?: ""
-                val computedBalances = calculateTrialBalances(text)
-                balances = computedBalances
-            } catch (e: Exception) {
-                e.printStackTrace()
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error reading balances: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-                balances = emptyList()
-            }
-        }
-    }
-
-    val currentBalances = balances
-    if (currentBalances == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Loading balances...")
-        }
-    } else if (currentBalances.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No balances found or error reading file.")
-        }
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            items(currentBalances) { balance ->
-                Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                    Text(text = balance.account, fontWeight = FontWeight.Bold)
-                    balance.balances.forEach { (currency, amount) ->
-                        Text(text = "$amount $currency")
-                    }
-                }
-            }
-        }
-    }
-}
-
-fun mapParseTreeToNodes(tree: ParseTree): List<DocumentNode> {
-    val levelCounts = mutableMapOf<Int, Int>()
-    var currentLevel = 0
-
-    val flatNodes = mutableListOf<DocumentNode>()
-    for (wrapper in tree.nodes) {
-        for (node in wrapper.comments) {
-            when (node) {
-                is AstNode.Heading -> {
-                    val level = node.level.toInt()
-                    if (level < currentLevel) {
-                        for (i in level + 1..currentLevel) {
-                            levelCounts.remove(i)
-                        }
-                    }
-                    currentLevel = level
-                    val count = levelCounts.getOrDefault(level, 0)
-                    levelCounts[level] = count + 1
-
-                    val finalTreeIndex = mutableListOf<Int>()
-                    for (i in 1..level) {
-                        finalTreeIndex.add(maxOf(0, levelCounts.getOrDefault(i, 1) - 1))
-                    }
-
-                    flatNodes.add(HeadingNode(
-                        level = level,
-                        content = node.content,
-                        span = Span(node.span.start.toInt(), node.span.end.toInt()),
-                        treeIndex = finalTreeIndex
-                    ))
-                }
-                is AstNode.Paragraph -> flatNodes.add(ParagraphNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt())))
-                is AstNode.CodeBlock -> flatNodes.add(CodeBlockNode(content = node.content, span = Span(node.span.start.toInt(), node.span.end.toInt())))
-            }
-        }
-
-        if (wrapper.directive !is uniffi.adzuki.BeancountNode.Empty) {
-            flatNodes.add(BeancountNode(span = Span(wrapper.directiveSpan.start.toInt(), wrapper.directiveSpan.end.toInt())))
-        }
-    }
-    return flatNodes
-}
-
 
 class MainActivity : ComponentActivity() {
-
-    init {
-        System.loadLibrary("adzuki")
-    }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -471,49 +226,50 @@ class MainActivity : ComponentActivity() {
                             val uri = Uri.parse(fileUri)
                             val file = DocumentFile.fromSingleUri(context, uri)
 
-                            val initialText = remember(fileUri) {
-                                try {
-                                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                                        inputStream.bufferedReader().use { it.readText() }
-                                    } ?: ""
-                                } catch (e: Exception) {
-                                    ""
+                            var doc by remember { mutableStateOf<AutomergeDocument?>(null) }
+                            var directives by remember { mutableStateOf<List<Directive>>(emptyList()) }
+                            val coroutineScope = rememberCoroutineScope()
+
+                            LaunchedEffect(fileUri) {
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+                                        val newDoc = AutomergeDocument(bytes)
+                                        doc = newDoc
+                                        directives = newDoc.getDirectives()
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        launch(Dispatchers.Main) {
+                                            Toast.makeText(context, "Error loading document: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        doc = AutomergeDocument()
+                                    }
                                 }
                             }
 
-                            val coroutineScope = rememberCoroutineScope()
-                            val docViewModel = remember(fileUri, initialText) {
-                                DocumentViewModel(
-                                    initialState = DocumentState(text = initialText),
-                                    coroutineScope = coroutineScope,
-                                    documentId = fileUri,
-                                    foldStateRepository = (application as AdzukiApplication).foldStateRepository,
-                                    parserProxy = { text ->
-                                        val parseTree = parseToTree(text)
-                                        mapParseTreeToNodes(parseTree)
-                                    },
-                                    onSave = { newText ->
-                                        coroutineScope.launch(Dispatchers.IO) {
-                                            try {
-                                                context.contentResolver.openOutputStream(uri, "wt")?.use { outputStream ->
-                                                    outputStream.write(newText.toByteArray())
-                                                }
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                                coroutineScope.launch(Dispatchers.Main) {
-                                                    Toast.makeText(context, "Error saving document: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                }
+                            val saveDoc = {
+                                doc?.let { currentDoc ->
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        try {
+                                            val bytes = currentDoc.save()
+                                            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+                                            val updatedDirectives = currentDoc.getDirectives()
+                                            launch(Dispatchers.Main) {
+                                                directives = updatedDirectives
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            launch(Dispatchers.Main) {
+                                                Toast.makeText(context, "Error saving document: ${e.message}", Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
-                                )
+                                }
                             }
-                            val editorState by docViewModel.state.collectAsState()
 
-                            BackHandler {
-                                docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
-                                viewModel.processIntent(MainIntent.NavigateBack)
-                            }
+                            var showAddMenu by remember { mutableStateOf(false) }
+                            var showAddAccountDialog by remember { mutableStateOf(false) }
+                            var showAddTransactionDialog by remember { mutableStateOf(false) }
 
                             Scaffold(
                                 topBar = {
@@ -521,35 +277,128 @@ class MainActivity : ComponentActivity() {
                                     TopAppBar(
                                         title = { Text(file?.name ?: "Editor") },
                                         navigationIcon = {
-                                            IconButton(onClick = {
-                                                docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
-                                                viewModel.processIntent(MainIntent.NavigateBack)
-                                            }) {
+                                            IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
                                                 Icon(Icons.Filled.Menu, contentDescription = "Menu")
                                             }
                                         }
                                     )
+                                },
+                                floatingActionButton = {
+                                    if (selectedTab == 0) {
+                                        Box {
+                                            FloatingActionButton(onClick = { showAddMenu = true }) {
+                                                Icon(Icons.Filled.Add, contentDescription = "Add")
+                                            }
+                                            DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                                                DropdownMenuItem(text = { Text("Account") }, onClick = { showAddMenu = false; showAddAccountDialog = true })
+                                                DropdownMenuItem(text = { Text("Transaction") }, onClick = { showAddMenu = false; showAddTransactionDialog = true })
+                                            }
+                                        }
+                                    }
                                 }
                             ) { padding ->
                                 Column(modifier = Modifier.padding(padding).fillMaxSize()) {
                                     TabRow(selectedTabIndex = selectedTab) {
-                                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Editor") })
-                                        Tab(selected = selectedTab == 1, onClick = {
-                                            docViewModel.processIntent(tech.bananajuice.adzuki.shared.mvi.DocumentIntent.SaveNow)
-                                            selectedTab = 1
-                                        }, text = { Text("Reports") })
+                                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Directives") })
+                                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Reports") })
                                     }
                                     if (selectedTab == 0) {
-                                        Box(modifier = Modifier.fillMaxSize()) {
-                                            DocumentEditor(
-                                                state = editorState,
-                                                onIntent = docViewModel::processIntent
-                                            )
+                                        if (doc == null) {
+                                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                Text("Loading...")
+                                            }
+                                        } else {
+                                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                                items(directives) { dir ->
+                                                    when (dir) {
+                                                        is AccountDirective -> {
+                                                            ListItem(
+                                                                headlineContent = { Text("Account: ${dir.name}") },
+                                                                supportingContent = { Text("Date: ${dir.date} | Currencies: ${dir.constraintCurrencies.joinToString(", ")}") }
+                                                            )
+                                                        }
+                                                        is TransactionDirective -> {
+                                                            ListItem(
+                                                                headlineContent = { Text("Transaction: ${dir.payee}") },
+                                                                supportingContent = {
+                                                                    Column {
+                                                                        Text("Date: ${dir.date} | Memo: ${dir.memo}")
+                                                                        dir.postings.forEach { p ->
+                                                                            Text("  ${p.account}: ${p.amount} ${p.currency}", style = MaterialTheme.typography.bodySmall)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                    Divider()
+                                                }
+                                            }
                                         }
-                                    } else if (selectedTab == 1) {
-                                        ReportsScreen(state = state)
+                                    } else {
+                                        ReportsScreen(directives)
                                     }
                                 }
+                            }
+
+                            if (showAddAccountDialog) {
+                                var name by remember { mutableStateOf("") }
+                                var date by remember { mutableStateOf("2024-01-01") }
+                                var currencies by remember { mutableStateOf("USD") }
+                                AlertDialog(
+                                    onDismissRequest = { showAddAccountDialog = false },
+                                    title = { Text("Add Account") },
+                                    text = {
+                                        Column {
+                                            OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
+                                            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                                            OutlinedTextField(value = currencies, onValueChange = { currencies = it }, label = { Text("Currencies (comma separated)") })
+                                        }
+                                    },
+                                    confirmButton = {
+                                        Button(onClick = {
+                                            doc?.addAccount(AccountDirective(date, name, currencies.split(",").map { it.trim() }))
+                                            saveDoc()
+                                            showAddAccountDialog = false
+                                        }) { Text("Add") }
+                                    },
+                                    dismissButton = {
+                                        Button(onClick = { showAddAccountDialog = false }) { Text("Cancel") }
+                                    }
+                                )
+                            }
+
+                            if (showAddTransactionDialog) {
+                                var date by remember { mutableStateOf("2024-01-01") }
+                                var payee by remember { mutableStateOf("") }
+                                var memo by remember { mutableStateOf("") }
+                                AlertDialog(
+                                    onDismissRequest = { showAddTransactionDialog = false },
+                                    title = { Text("Add Transaction") },
+                                    text = {
+                                        Column {
+                                            OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
+                                            OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Payee") })
+                                            OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("Memo") })
+                                            // Simplification: hardcode a simple posting entry for now to test functionality
+                                            Text("A default posting will be added (Assets:Checking -10 USD, Expenses:Food 10 USD)")
+                                        }
+                                    },
+                                    confirmButton = {
+                                        Button(onClick = {
+                                            val postings = listOf(
+                                                Posting("Assets:Checking", "-10", "USD"),
+                                                Posting("Expenses:Food", "10", "USD")
+                                            )
+                                            doc?.addTransaction(TransactionDirective(date, payee, memo, postings))
+                                            saveDoc()
+                                            showAddTransactionDialog = false
+                                        }) { Text("Add") }
+                                    },
+                                    dismissButton = {
+                                        Button(onClick = { showAddTransactionDialog = false }) { Text("Cancel") }
+                                    }
+                                )
                             }
                         }
                     }
