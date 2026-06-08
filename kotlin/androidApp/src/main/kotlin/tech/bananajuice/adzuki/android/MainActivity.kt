@@ -195,6 +195,10 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 
 class MainActivity : ComponentActivity() {
 
+    init {
+        System.loadLibrary("adzuki")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
