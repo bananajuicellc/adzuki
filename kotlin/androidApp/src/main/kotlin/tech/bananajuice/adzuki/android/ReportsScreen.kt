@@ -10,27 +10,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import tech.bananajuice.adzuki.shared.automerge.Directive
 import tech.bananajuice.adzuki.shared.automerge.TransactionDirective
+import java.math.BigDecimal
 
 data class AccountBalanceUi(
     val account: String,
-    val balances: Map<String, Double>
+    val balances: Map<String, BigDecimal>
 )
 
 fun calculateTrialBalances(directives: List<Directive>): List<AccountBalanceUi> {
-    val balances = mutableMapOf<String, MutableMap<String, Double>>()
+    val balances = mutableMapOf<String, MutableMap<String, BigDecimal>>()
 
     for (dir in directives) {
         if (dir is TransactionDirective) {
             for (posting in dir.postings) {
                 val account = posting.account
                 val currency = posting.currency
-                val amount = posting.amount.toDoubleOrNull() ?: 0.0
+                val amount = try {
+                    BigDecimal(posting.amount)
+                } catch (e: Exception) {
+                    BigDecimal.ZERO
+                }
 
                 if (!balances.containsKey(account)) {
                     balances[account] = mutableMapOf()
                 }
 
-                val currentBalance = balances[account]?.get(currency) ?: 0.0
+                val currentBalance = balances[account]?.get(currency) ?: BigDecimal.ZERO
                 balances[account]?.put(currency, currentBalance + amount)
             }
         }
