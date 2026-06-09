@@ -4,9 +4,7 @@ import org.automerge.AmValue
 import org.automerge.Document
 import org.automerge.ObjectId
 import org.automerge.ObjectType
-import org.automerge.AmValue.List as AmList
-import org.automerge.AmValue.Map as AmMap
-import org.automerge.AmValue.Str as AmStr
+import org.automerge.Transaction
 
 sealed interface Directive
 
@@ -44,21 +42,34 @@ class AutomergeDocument {
         return doc.save()
     }
 
-    private fun getLength(tx: org.automerge.Transaction, listId: ObjectId): Long {
+    private fun getLength(tx: Transaction, listId: ObjectId): Long {
         return tx.length(listId)
+    }
+
+    private fun ensureVersionAndDirectives(tx: Transaction): ObjectId {
+        val root = ObjectId.ROOT
+
+        val versionOpt = tx.get(root, "version")
+        if (!versionOpt.isPresent || (versionOpt.get() as? AmValue.Str)?.value != "0") {
+            tx.set(root, "version", "0")
+        }
+
+        val directivesOpt = tx.get(root, "directives")
+        return if (directivesOpt.isPresent) {
+            val amValue = directivesOpt.get()
+            if (amValue is AmValue.List) {
+                amValue.id
+            } else {
+                tx.set(root, "directives", ObjectType.LIST)
+            }
+        } else {
+            tx.set(root, "directives", ObjectType.LIST)
+        }
     }
 
     fun addAccount(account: AccountDirective) {
         doc.startTransaction().use { tx ->
-            val root = ObjectId.ROOT
-
-            val directivesOpt = tx.get(root, "directives")
-            val directives = if (directivesOpt.isPresent) {
-                (directivesOpt.get() as AmValue.List).id
-            } else {
-                tx.set(root, "directives", ObjectType.LIST)
-            }
-
+            val directives = ensureVersionAndDirectives(tx)
             val len = getLength(tx, directives)
 
             val accountDir = tx.insert(directives, len, ObjectType.MAP)
@@ -77,15 +88,7 @@ class AutomergeDocument {
 
     fun addTransaction(transaction: TransactionDirective) {
         doc.startTransaction().use { tx ->
-            val root = ObjectId.ROOT
-
-            val directivesOpt = tx.get(root, "directives")
-            val directives = if (directivesOpt.isPresent) {
-                (directivesOpt.get() as AmValue.List).id
-            } else {
-                tx.set(root, "directives", ObjectType.LIST)
-            }
-
+            val directives = ensureVersionAndDirectives(tx)
             val len = getLength(tx, directives)
 
             val txnDir = tx.insert(directives, len, ObjectType.MAP)
@@ -106,6 +109,60 @@ class AutomergeDocument {
         }
     }
 
+    private fun parseAccount(tx: Transaction, dirObj: ObjectId): AccountDirective? {
+        val name = tx.get(dirObj, "name").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        val date = tx.get(dirObj, "date").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+
+        val currencies = mutableListOf<String>()
+        val currListOpt = tx.get(dirObj, "constraint_currencies")
+
+        if (currListOpt.isPresent) {
+            val currListVal = currListOpt.get()
+            if (currListVal is AmValue.List) {
+                val clen = getLength(tx, currListVal.id)
+                for (j in 0 until clen) {
+                    val currOpt = tx.get(currListVal.id, j)
+                    if (currOpt.isPresent) {
+                        val currVal = currOpt.get()
+                        if (currVal is AmValue.Str) {
+                            currencies.add(currVal.value)
+                        }
+                    }
+                }
+            }
+        }
+        return AccountDirective(date, name, currencies)
+    }
+
+    private fun parseTransaction(tx: Transaction, dirObj: ObjectId): TransactionDirective? {
+        val date = tx.get(dirObj, "date").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        val payee = tx.get(dirObj, "payee").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        val memo = tx.get(dirObj, "memo").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+
+        val postings = mutableListOf<Posting>()
+        val postingsListOpt = tx.get(dirObj, "postings")
+
+        if (postingsListOpt.isPresent) {
+            val postingsListVal = postingsListOpt.get()
+            if (postingsListVal is AmValue.List) {
+                val plen = getLength(tx, postingsListVal.id)
+                for (j in 0 until plen) {
+                    val postingOpt = tx.get(postingsListVal.id, j.toLong())
+                    if (postingOpt.isPresent) {
+                        val pVal = postingOpt.get()
+                        if (pVal is AmValue.Map) {
+                            val account = tx.get(pVal.id, "account").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+                            val amount = tx.get(pVal.id, "amount").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+                            val currency = tx.get(pVal.id, "currency").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+                            postings.add(Posting(account, amount, currency))
+                        }
+                    }
+                }
+            }
+        }
+        return TransactionDirective(date, payee, memo, postings)
+    }
+
     fun getDirectives(): List<Directive> {
         val result = mutableListOf<Directive>()
         doc.startTransaction().use { tx ->
@@ -113,56 +170,25 @@ class AutomergeDocument {
             val directivesOpt = tx.get(root, "directives")
             if (!directivesOpt.isPresent) return emptyList()
 
-            val directives = (directivesOpt.get() as AmValue.List).id
-            val len = getLength(tx, directives)
+            val directivesVal = directivesOpt.get()
+            if (directivesVal !is AmValue.List) return emptyList()
+
+            val directivesId = directivesVal.id
+            val len = getLength(tx, directivesId)
+
             for (i in 0 until len) {
-                val dirOpt = tx.get(directives, i)
+                val dirOpt = tx.get(directivesId, i)
                 if (dirOpt.isPresent) {
-                    val dirObj = (dirOpt.get() as AmValue.Map).id
-                    val typeOpt = tx.get(dirObj, "type")
-                    if (typeOpt.isPresent) {
-                        val typeVal = typeOpt.get()
-                        if (typeVal is AmValue.Str) {
-                            val type = typeVal.value
-                            if (type == "Account") {
-                                val name = tx.get(dirObj, "name").map { (it as AmValue.Str).value }.orElse("")
-                                val date = tx.get(dirObj, "date").map { (it as AmValue.Str).value }.orElse("")
-
-                                val currencies = mutableListOf<String>()
-                                val currListOpt = tx.get(dirObj, "constraint_currencies")
-                                if (currListOpt.isPresent) {
-                                    val currListObj = (currListOpt.get() as AmValue.List).id
-                                    val clen = getLength(tx, currListObj)
-                                    for (j in 0 until clen) {
-                                        val currOpt = tx.get(currListObj, j)
-                                        if (currOpt.isPresent) {
-                                            currencies.add((currOpt.get() as AmValue.Str).value)
-                                        }
-                                    }
+                    val dirVal = dirOpt.get()
+                    if (dirVal is AmValue.Map) {
+                        val typeOpt = tx.get(dirVal.id, "type")
+                        if (typeOpt.isPresent) {
+                            val typeVal = typeOpt.get()
+                            if (typeVal is AmValue.Str) {
+                                when (typeVal.value) {
+                                    "Account" -> parseAccount(tx, dirVal.id)?.let { result.add(it) }
+                                    "Transaction" -> parseTransaction(tx, dirVal.id)?.let { result.add(it) }
                                 }
-                                result.add(AccountDirective(date, name, currencies))
-                            } else if (type == "Transaction") {
-                                val date = tx.get(dirObj, "date").map { (it as AmValue.Str).value }.orElse("")
-                                val payee = tx.get(dirObj, "payee").map { (it as AmValue.Str).value }.orElse("")
-                                val memo = tx.get(dirObj, "memo").map { (it as AmValue.Str).value }.orElse("")
-
-                                val postings = mutableListOf<Posting>()
-                                val postingsListOpt = tx.get(dirObj, "postings")
-                                if (postingsListOpt.isPresent) {
-                                    val postingsListObj = (postingsListOpt.get() as AmValue.List).id
-                                    val plen = getLength(tx, postingsListObj)
-                                    for (j in 0 until plen) {
-                                        val postingOpt = tx.get(postingsListObj, j)
-                                        if (postingOpt.isPresent) {
-                                            val pObj = (postingOpt.get() as AmValue.Map).id
-                                            val account = tx.get(pObj, "account").map { (it as AmValue.Str).value }.orElse("")
-                                            val amount = tx.get(pObj, "amount").map { (it as AmValue.Str).value }.orElse("")
-                                            val currency = tx.get(pObj, "currency").map { (it as AmValue.Str).value }.orElse("")
-                                            postings.add(Posting(account, amount, currency))
-                                        }
-                                    }
-                                }
-                                result.add(TransactionDirective(date, payee, memo, postings))
                             }
                         }
                     }
