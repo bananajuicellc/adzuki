@@ -229,18 +229,29 @@ fun TransactionEditDialog(
     var payee by remember { mutableStateOf(transaction?.payee ?: "") }
     var memo by remember { mutableStateOf(transaction?.memo ?: "") }
     var showDatePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Convert current postings to mutable state list for UI editing
     val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
 
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = try {
+        val parsedDateMillis = remember(date) {
+            try {
                 java.time.LocalDate.parse(date).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
-            } catch (e: Exception) {
+            } catch (e: java.time.format.DateTimeParseException) {
                 null
             }
+        }
+
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = parsedDateMillis
         )
+
+        LaunchedEffect(showDatePicker) {
+            if (parsedDateMillis == null) {
+                 Toast.makeText(context, "Error parsing date: Invalid format", Toast.LENGTH_SHORT).show()
+            }
+        }
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
