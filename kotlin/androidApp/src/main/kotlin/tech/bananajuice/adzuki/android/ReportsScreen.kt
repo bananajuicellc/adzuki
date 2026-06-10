@@ -17,7 +17,7 @@ data class AccountBalanceUi(
     val balances: Map<String, BigDecimal>
 )
 
-fun calculateTrialBalances(directives: List<Directive>): List<AccountBalanceUi> {
+fun calculateTrialBalances(directives: List<Directive>): Result<List<AccountBalanceUi>> {
     val balances = mutableMapOf<String, MutableMap<String, BigDecimal>>()
 
     for (dir in directives) {
@@ -25,10 +25,14 @@ fun calculateTrialBalances(directives: List<Directive>): List<AccountBalanceUi> 
             for (posting in dir.postings) {
                 val account = posting.account
                 val currency = posting.currency
+
+                val amountStr = posting.amount.trim()
+                if (amountStr.isEmpty()) continue // Skip empty postings logic if any
+
                 val amount = try {
-                    BigDecimal(posting.amount)
+                    BigDecimal(amountStr)
                 } catch (e: Exception) {
-                    BigDecimal.ZERO
+                    return Result.failure(Exception("Invalid amount '${posting.amount}' in transaction '${dir.payee}' for account '${posting.account}'"))
                 }
 
                 if (!balances.containsKey(account)) {
@@ -41,20 +45,26 @@ fun calculateTrialBalances(directives: List<Directive>): List<AccountBalanceUi> 
         }
     }
 
-    return balances.map { (account, currencies) ->
+    return Result.success(balances.map { (account, currencies) ->
         AccountBalanceUi(account, currencies)
-    }.sortedBy { it.account }
+    }.sortedBy { it.account })
 }
 
 @Composable
 fun ReportsScreen(directives: List<Directive>) {
-    val currentBalances = calculateTrialBalances(directives)
+    val balancesResult = calculateTrialBalances(directives)
 
-    if (currentBalances.isEmpty()) {
+    if (balancesResult.isFailure) {
+        val errorMsg = balancesResult.exceptionOrNull()?.message ?: "Unknown error"
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Text("Report Error:\n$errorMsg", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+        }
+    } else if (balancesResult.getOrNull().isNullOrEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text("No balances found.")
         }
     } else {
+        val currentBalances = balancesResult.getOrNull()!!
         LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             items(currentBalances) { balance ->
                 Column(modifier = Modifier.padding(bottom = 16.dp)) {
