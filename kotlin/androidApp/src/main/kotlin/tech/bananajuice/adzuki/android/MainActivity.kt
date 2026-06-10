@@ -104,11 +104,22 @@ class MainViewModel : ViewModel() {
 @Composable
 fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, takeFlags)
             onIntent(MainIntent.SelectRootFolder(uri.toString()))
+        }
+    }
+
+    val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            try {
+                val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            } catch (e: Exception) {
+            }
+            onIntent(MainIntent.OpenEditor(uri.toString()))
         }
     }
 
@@ -117,8 +128,12 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Button(onClick = { launcher.launch(null) }) {
+        Button(onClick = { folderLauncher.launch(null) }) {
             Text("Select Journal Folder")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
+            Text("New Journal")
         }
     }
 }
@@ -163,7 +178,7 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     val folderUriStr = (state.currentScreen as Screen.FileList).folderUri
     val folderUri = Uri.parse(folderUriStr)
     val folderFile = DocumentFile.fromTreeUri(context, folderUri)
-    val files = folderFile?.listFiles()?.filter { it.isFile } ?: emptyList()
+    val files = folderFile?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
 
     BackHandler {
         onIntent(MainIntent.NavigateBack)
@@ -182,7 +197,7 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                val newFile = folderFile?.createFile("application/octet-stream", "main.am")
+                val newFile = folderFile?.createFile("application/octet-stream", "main.adzuki")
                 if (newFile != null) {
                     onIntent(MainIntent.OpenEditor(newFile.uri.toString()))
                 }
