@@ -1,34 +1,12 @@
 package tech.bananajuice.adzuki.shared.mvi
 
-// We keep a generic AstNode representation in the shared module since uniffi.adzuki.AstNode
-// is currently generated directly in the AndroidApp module.
-// In a full multiplatform setup, we'd generate Uniffi bindings for KMP natively.
-
-data class Span(val start: Int, val end: Int)
-
-sealed interface DocumentNode {
-    val span: Span
-}
-
-data class HeadingNode(
-    val level: Int,
-    val content: String,
-    override val span: Span,
-    val treeIndex: List<Int> = emptyList() // Added tree index for stable identification
-) : DocumentNode
-
-data class ParagraphNode(val content: String, override val span: Span) : DocumentNode
-data class CodeBlockNode(val content: String, override val span: Span) : DocumentNode
-data class BeancountNode(override val span: Span) : DocumentNode
+import tech.bananajuice.adzuki.shared.automerge.Directive
+import tech.bananajuice.adzuki.shared.automerge.TransactionDirective
 
 data class DocumentState(
-    val text: String = "",
-    val nodes: List<DocumentNode> = emptyList(),
-    val foldedHeadingIds: Set<List<Int>> = emptySet() // Set of folded heading tree indices
+    val directives: List<Directive> = emptyList(),
+    val isEditingTransaction: Boolean = false,
+    val transactionBeingEdited: TransactionDirective? = null,
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null
 )
-
-sealed interface DocumentIntent {
-    data class UpdateText(val newText: String) : DocumentIntent
-    object SaveNow : DocumentIntent
-    data class ToggleFold(val headingIndex: List<Int>) : DocumentIntent // Intent to toggle folding
-}

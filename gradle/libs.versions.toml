@@ -9,7 +9,10 @@ junit = "4.13.2"
 lifecycle-viewmodel-compose = "2.10.0"
 room = "2.8.4"
 
+automerge = "0.0.9"
+
 [libraries]
+automerge = { group = "org.automerge", name = "automerge", version.ref = "automerge" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
