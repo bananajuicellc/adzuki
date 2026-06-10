@@ -5,8 +5,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,11 +14,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tech.bananajuice.adzuki.shared.automerge.*
+import tech.bananajuice.adzuki.shared.mvi.*
 
 sealed class Screen {
     object SelectFolder : Screen()
@@ -160,13 +165,17 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     val folderFile = DocumentFile.fromTreeUri(context, folderUri)
     val files = folderFile?.listFiles()?.filter { it.isFile } ?: emptyList()
 
+    BackHandler {
+        onIntent(MainIntent.NavigateBack)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(folderFile?.name ?: "Files") },
                 navigationIcon = {
                     IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -191,6 +200,84 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun TransactionEditDialog(
+    transaction: TransactionDirective?,
+    onSave: (TransactionDirective) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var date by remember { mutableStateOf(transaction?.date ?: "2024-01-01") }
+    var payee by remember { mutableStateOf(transaction?.payee ?: "") }
+    var memo by remember { mutableStateOf(transaction?.memo ?: "") }
+
+    // Convert current postings to mutable state list for UI editing
+    val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (transaction != null) "Edit Transaction" else "Add Transaction") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
+                OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Payee") })
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("Memo") })
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Postings", fontWeight = FontWeight.Bold)
+
+                LazyColumn(modifier = Modifier.height(200.dp)) {
+                    items(postings.size) { i ->
+                        val p = postings[i]
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = p.account,
+                                onValueChange = { postings[i] = p.copy(account = it) },
+                                label = { Text("Acct") },
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = p.amount,
+                                onValueChange = { postings[i] = p.copy(amount = it) },
+                                label = { Text("Amt") },
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = p.currency,
+                                onValueChange = { postings[i] = p.copy(currency = it) },
+                                label = { Text("Cur") },
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { postings.removeAt(i) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                            }
+                        }
+                    }
+                    item {
+                        Button(onClick = { postings.add(Posting("", "", "")) }) {
+                            Text("Add Posting")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val newTxn = TransactionDirective(
+                    id = transaction?.id ?: -1L,
+                    date = date,
+                    payee = payee,
+                    memo = memo,
+                    postings = postings.toList()
+                )
+                onSave(newTxn)
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 class MainActivity : ComponentActivity() {
@@ -230,50 +317,31 @@ class MainActivity : ComponentActivity() {
                             val uri = Uri.parse(fileUri)
                             val file = DocumentFile.fromSingleUri(context, uri)
 
-                            var doc by remember { mutableStateOf<AutomergeDocument?>(null) }
-                            var directives by remember { mutableStateOf<List<Directive>>(emptyList()) }
                             val coroutineScope = rememberCoroutineScope()
 
-                            LaunchedEffect(fileUri) {
-                                coroutineScope.launch(Dispatchers.IO) {
-                                    try {
-                                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-                                        val newDoc = AutomergeDocument(bytes)
-                                        doc = newDoc
-                                        directives = newDoc.getDirectives()
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        launch(Dispatchers.Main) {
-                                            Toast.makeText(context, "Error loading document: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                        doc = AutomergeDocument()
+                            val docViewModel = remember(fileUri) {
+                                DocumentViewModel(
+                                    coroutineScope = coroutineScope,
+                                    loadDocumentBytes = {
+                                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+                                    },
+                                    saveDocumentBytes = { bytes ->
+                                        context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
                                     }
-                                }
+                                )
+                            }
+                            val docState by docViewModel.state.collectAsState()
+
+                            BackHandler {
+                                viewModel.processIntent(MainIntent.NavigateBack)
                             }
 
-                            val saveDoc = {
-                                doc?.let { currentDoc ->
-                                    coroutineScope.launch(Dispatchers.IO) {
-                                        try {
-                                            val bytes = currentDoc.save()
-                                            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-                                            val updatedDirectives = currentDoc.getDirectives()
-                                            launch(Dispatchers.Main) {
-                                                directives = updatedDirectives
-                                            }
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                            launch(Dispatchers.Main) {
-                                                Toast.makeText(context, "Error saving document: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
+                            docState.errorMessage?.let { msg ->
+                                LaunchedEffect(msg) {
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    docViewModel.processIntent(DocumentIntent.DismissError)
                                 }
                             }
-
-                            var showAddMenu by remember { mutableStateOf(false) }
-                            var showAddAccountDialog by remember { mutableStateOf(false) }
-                            var showAddTransactionDialog by remember { mutableStateOf(false) }
 
                             Scaffold(
                                 topBar = {
@@ -282,43 +350,44 @@ class MainActivity : ComponentActivity() {
                                         title = { Text(file?.name ?: "Editor") },
                                         navigationIcon = {
                                             IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
-                                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                                             }
                                         }
                                     )
                                 },
                                 floatingActionButton = {
                                     if (selectedTab == 0) {
-                                        Box {
-                                            FloatingActionButton(onClick = { showAddMenu = true }) {
-                                                Icon(Icons.Filled.Add, contentDescription = "Add")
-                                            }
-                                            DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                                                DropdownMenuItem(text = { Text("Account") }, onClick = { showAddMenu = false; showAddAccountDialog = true })
-                                                DropdownMenuItem(text = { Text("Transaction") }, onClick = { showAddMenu = false; showAddTransactionDialog = true })
-                                            }
+                                        FloatingActionButton(onClick = {
+                                            docViewModel.processIntent(DocumentIntent.StartEditingTransaction(null))
+                                        }) {
+                                            Icon(Icons.Filled.Add, contentDescription = "Add Transaction")
                                         }
                                     }
                                 }
                             ) { padding ->
                                 Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-                                    TabRow(selectedTabIndex = selectedTab) {
+                                    PrimaryTabRow(selectedTabIndex = selectedTab) {
                                         Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Directives") })
                                         Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Reports") })
                                     }
                                     if (selectedTab == 0) {
-                                        if (doc == null) {
+                                        if (docState.isLoading) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 Text("Loading...")
                                             }
                                         } else {
                                             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                                items(directives) { dir ->
+                                                items(docState.directives) { dir ->
                                                     when (dir) {
                                                         is AccountDirective -> {
                                                             ListItem(
                                                                 headlineContent = { Text("Account: ${dir.name}") },
-                                                                supportingContent = { Text("Date: ${dir.date} | Currencies: ${dir.constraintCurrencies.joinToString(", ")}") }
+                                                                supportingContent = { Text("Date: ${dir.date} | Currencies: ${dir.constraintCurrencies.joinToString(", ")}") },
+                                                                trailingContent = {
+                                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
+                                                                    }
+                                                                }
                                                             )
                                                         }
                                                         is TransactionDirective -> {
@@ -331,77 +400,35 @@ class MainActivity : ComponentActivity() {
                                                                             Text("  ${p.account}: ${p.amount} ${p.currency}", style = MaterialTheme.typography.bodySmall)
                                                                         }
                                                                     }
+                                                                },
+                                                                trailingContent = {
+                                                                    Row {
+                                                                        IconButton(onClick = { docViewModel.processIntent(DocumentIntent.StartEditingTransaction(dir)) }) {
+                                                                            Icon(Icons.Filled.Edit, contentDescription = "Edit Transaction")
+                                                                        }
+                                                                        IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                                            Icon(Icons.Filled.Delete, contentDescription = "Delete Transaction")
+                                                                        }
+                                                                    }
                                                                 }
                                                             )
                                                         }
                                                     }
-                                                    Divider()
+                                                    HorizontalDivider()
                                                 }
                                             }
                                         }
                                     } else {
-                                        ReportsScreen(directives)
+                                        ReportsScreen(docState.directives)
                                     }
                                 }
                             }
 
-                            if (showAddAccountDialog) {
-                                var name by remember { mutableStateOf("") }
-                                var date by remember { mutableStateOf("2024-01-01") }
-                                var currencies by remember { mutableStateOf("USD") }
-                                AlertDialog(
-                                    onDismissRequest = { showAddAccountDialog = false },
-                                    title = { Text("Add Account") },
-                                    text = {
-                                        Column {
-                                            OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
-                                            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                                            OutlinedTextField(value = currencies, onValueChange = { currencies = it }, label = { Text("Currencies (comma separated)") })
-                                        }
-                                    },
-                                    confirmButton = {
-                                        Button(onClick = {
-                                            doc?.addAccount(AccountDirective(date, name, currencies.split(",").map { it.trim() }))
-                                            saveDoc()
-                                            showAddAccountDialog = false
-                                        }) { Text("Add") }
-                                    },
-                                    dismissButton = {
-                                        Button(onClick = { showAddAccountDialog = false }) { Text("Cancel") }
-                                    }
-                                )
-                            }
-
-                            if (showAddTransactionDialog) {
-                                var date by remember { mutableStateOf("2024-01-01") }
-                                var payee by remember { mutableStateOf("") }
-                                var memo by remember { mutableStateOf("") }
-                                AlertDialog(
-                                    onDismissRequest = { showAddTransactionDialog = false },
-                                    title = { Text("Add Transaction") },
-                                    text = {
-                                        Column {
-                                            OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
-                                            OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Payee") })
-                                            OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("Memo") })
-                                            // Simplification: hardcode a simple posting entry for now to test functionality
-                                            Text("A default posting will be added (Assets:Checking -10 USD, Expenses:Food 10 USD)")
-                                        }
-                                    },
-                                    confirmButton = {
-                                        Button(onClick = {
-                                            val postings = listOf(
-                                                Posting("Assets:Checking", "-10", "USD"),
-                                                Posting("Expenses:Food", "10", "USD")
-                                            )
-                                            doc?.addTransaction(TransactionDirective(date, payee, memo, postings))
-                                            saveDoc()
-                                            showAddTransactionDialog = false
-                                        }) { Text("Add") }
-                                    },
-                                    dismissButton = {
-                                        Button(onClick = { showAddTransactionDialog = false }) { Text("Cancel") }
-                                    }
+                            if (docState.isEditingTransaction) {
+                                TransactionEditDialog(
+                                    transaction = docState.transactionBeingEdited,
+                                    onSave = { docViewModel.processIntent(DocumentIntent.SaveTransaction(it)) },
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingTransaction) }
                                 )
                             }
                         }

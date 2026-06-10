@@ -6,9 +6,12 @@ import org.automerge.ObjectId
 import org.automerge.ObjectType
 import org.automerge.Transaction
 
-sealed interface Directive
+sealed interface Directive {
+    val id: Long
+}
 
 data class AccountDirective(
+    override val id: Long,
     val date: String,
     val name: String,
     val constraintCurrencies: List<String>
@@ -21,6 +24,7 @@ data class Posting(
 )
 
 data class TransactionDirective(
+    override val id: Long,
     val date: String,
     val payee: String,
     val memo: String,
@@ -109,7 +113,55 @@ class AutomergeDocument {
         }
     }
 
-    private fun parseAccount(tx: Transaction, dirObj: ObjectId): AccountDirective? {
+    fun updateTransaction(transaction: TransactionDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val dirOpt = tx.get(directives, transaction.id)
+            if (dirOpt.isPresent) {
+                val dirVal = dirOpt.get()
+                if (dirVal is AmValue.Map) {
+                    val txnDir = dirVal.id
+                    tx.set(txnDir, "date", transaction.date)
+                    tx.set(txnDir, "payee", transaction.payee)
+                    tx.set(txnDir, "memo", transaction.memo)
+
+                    val postingsListOpt = tx.get(txnDir, "postings")
+                    if (postingsListOpt.isPresent) {
+                        val postingsListVal = postingsListOpt.get()
+                        if (postingsListVal is AmValue.List) {
+                            val postingsList = postingsListVal.id
+                            // Clear existing postings
+                            val plen = getLength(tx, postingsList)
+                            for (i in (plen - 1) downTo 0) {
+                                tx.delete(postingsList, i)
+                            }
+                            // Insert new postings
+                            transaction.postings.forEachIndexed { i, p ->
+                                val postingObj = tx.insert(postingsList, i.toLong(), ObjectType.MAP)
+                                tx.set(postingObj, "account", p.account)
+                                tx.set(postingObj, "amount", p.amount)
+                                tx.set(postingObj, "currency", p.currency)
+                            }
+                        }
+                    }
+                }
+            }
+            tx.commit()
+        }
+    }
+
+    fun deleteDirective(id: Long) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val len = getLength(tx, directives)
+            if (id in 0 until len) {
+                tx.delete(directives, id)
+            }
+            tx.commit()
+        }
+    }
+
+    private fun parseAccount(tx: Transaction, dirObj: ObjectId, index: Long): AccountDirective? {
         val name = tx.get(dirObj, "name").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
         val date = tx.get(dirObj, "date").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
 
@@ -131,10 +183,10 @@ class AutomergeDocument {
                 }
             }
         }
-        return AccountDirective(date, name, currencies)
+        return AccountDirective(index, date, name, currencies)
     }
 
-    private fun parseTransaction(tx: Transaction, dirObj: ObjectId): TransactionDirective? {
+    private fun parseTransaction(tx: Transaction, dirObj: ObjectId, index: Long): TransactionDirective? {
         val date = tx.get(dirObj, "date").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
         val payee = tx.get(dirObj, "payee").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
         val memo = tx.get(dirObj, "memo").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
@@ -160,7 +212,7 @@ class AutomergeDocument {
                 }
             }
         }
-        return TransactionDirective(date, payee, memo, postings)
+        return TransactionDirective(index, date, payee, memo, postings)
     }
 
     fun getDirectives(): List<Directive> {
@@ -186,8 +238,8 @@ class AutomergeDocument {
                             val typeVal = typeOpt.get()
                             if (typeVal is AmValue.Str) {
                                 when (typeVal.value) {
-                                    "Account" -> parseAccount(tx, dirVal.id)?.let { result.add(it) }
-                                    "Transaction" -> parseTransaction(tx, dirVal.id)?.let { result.add(it) }
+                                    "Account" -> parseAccount(tx, dirVal.id, i)?.let { result.add(it) }
+                                    "Transaction" -> parseTransaction(tx, dirVal.id, i)?.let { result.add(it) }
                                 }
                             }
                         }
