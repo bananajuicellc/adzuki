@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
@@ -124,6 +125,43 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
         }
     }
 
+    var beancountContentToImport by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+
+    val importSaveDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null && beancountContentToImport != null) {
+            try {
+                val doc = importFromBeancount(beancountContentToImport!!)
+                val bytes = doc.save()
+                context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+
+                val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                try {
+                    context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                } catch (e: Exception) {
+                    // Ignore if persistable permission cannot be taken for a newly created document
+                }
+                onIntent(MainIntent.OpenEditor(uri.toString()))
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error importing: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+        beancountContentToImport = null
+    }
+
+    val importPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                if (text != null) {
+                    beancountContentToImport = text
+                    importSaveDocLauncher.launch("imported_journal.adzuki")
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to read Beancount file: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -135,6 +173,10 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
             Text("New Journal")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
+            Text("Import Beancount File")
         }
     }
 }
@@ -402,6 +444,18 @@ class MainActivity : ComponentActivity() {
                             }
                             val docState by docViewModel.state.collectAsState()
 
+                            val exportDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { exportUri ->
+                                if (exportUri != null) {
+                                    try {
+                                        val exportText = exportToBeancount(docState.directives)
+                                        context.contentResolver.openOutputStream(exportUri, "wt")?.use { it.write(exportText.toByteArray()) }
+                                        Toast.makeText(context, "Exported successfully", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+
                             BackHandler {
                                 viewModel.processIntent(MainIntent.NavigateBack)
                             }
@@ -421,6 +475,11 @@ class MainActivity : ComponentActivity() {
                                         navigationIcon = {
                                             IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
                                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                                            }
+                                        },
+                                        actions = {
+                                            IconButton(onClick = { exportDocLauncher.launch("exported_journal.beancount") }) {
+                                                Icon(Icons.Filled.Share, contentDescription = "Export to Beancount")
                                             }
                                         }
                                     )
