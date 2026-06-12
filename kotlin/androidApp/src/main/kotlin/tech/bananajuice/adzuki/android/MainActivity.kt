@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
@@ -217,25 +218,79 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEditDialog(
     transaction: TransactionDirective?,
     onSave: (TransactionDirective) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var date by remember { mutableStateOf(transaction?.date ?: "2024-01-01") }
+    var date by remember { mutableStateOf(transaction?.date ?: java.time.LocalDate.now().toString()) }
     var payee by remember { mutableStateOf(transaction?.payee ?: "") }
     var memo by remember { mutableStateOf(transaction?.memo ?: "") }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Convert current postings to mutable state list for UI editing
     val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
+
+    if (showDatePicker) {
+        val parsedDateMillis = remember(date) {
+            try {
+                java.time.LocalDate.parse(date).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            } catch (e: java.time.format.DateTimeParseException) {
+                null
+            }
+        }
+
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = parsedDateMillis
+        )
+
+        LaunchedEffect(showDatePicker) {
+            if (parsedDateMillis == null) {
+                 Toast.makeText(context, "Error parsing date: Invalid format", Toast.LENGTH_SHORT).show()
+            }
+        }
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val localDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
+                        date = localDate.toString()
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (transaction != null) "Edit Transaction" else "Add Transaction") },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date") })
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = { },
+                    readOnly = true,
+                    label = { Text("Date") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Filled.DateRange, contentDescription = "Select Date")
+                        }
+                    }
+                )
                 OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Payee") })
                 OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("Memo") })
 
