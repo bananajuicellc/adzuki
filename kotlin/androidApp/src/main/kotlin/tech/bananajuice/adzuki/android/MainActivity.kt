@@ -135,7 +135,11 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
                 context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
 
                 val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                try {
+                    context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                } catch (e: Exception) {
+                    // Ignore if persistable permission cannot be taken for a newly created document
+                }
                 onIntent(MainIntent.OpenEditor(uri.toString()))
             } catch (e: Exception) {
                 Toast.makeText(context, "Error importing: ${e.message}", Toast.LENGTH_SHORT).show()
