@@ -55,7 +55,14 @@ fun exportToBeancount(directives: List<Directive>): String {
             val safeMemo = dir.memo.replace("\"", "\\\"")
             sb.append("${dir.date} * \"${safePayee}\" \"${safeMemo}\"\n")
             dir.postings.forEach { p ->
-                sb.append("  ${p.account} ${p.amount} ${p.currency}\n")
+                sb.append("  ${p.account}")
+                if (p.amount.isNotEmpty()) {
+                    sb.append(" ${p.amount}")
+                    if (p.currency.isNotEmpty()) {
+                        sb.append(" ${p.currency}")
+                    }
+                }
+                sb.append("\n")
             }
             sb.append("\n")
         }
