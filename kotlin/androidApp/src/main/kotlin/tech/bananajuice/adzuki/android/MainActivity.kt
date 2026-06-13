@@ -31,7 +31,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
@@ -60,12 +62,27 @@ sealed class MainIntent {
     data class OpenFolder(val uri: String) : MainIntent()
     object NavigateBack : MainIntent()
     data class SelectRootFolder(val uri: String) : MainIntent()
+    data class RemoveRootFolder(val uri: String) : MainIntent()
     data class OpenEditor(val uri: String) : MainIntent()
 }
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(MainState())
     val state: StateFlow<MainState> = _state.asStateFlow()
+
+    private val prefs = application.getSharedPreferences("adzuki_prefs", Context.MODE_PRIVATE)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val savedFolders = prefs.getStringSet("root_folders", emptySet())?.toList() ?: emptyList()
+            _state.update {
+                it.copy(
+                    rootFolders = savedFolders,
+                    currentScreen = if (savedFolders.isNotEmpty()) Screen.JournalList else Screen.SelectFolder
+                )
+            }
+        }
+    }
 
     fun processIntent(intent: MainIntent) {
         when (intent) {
@@ -74,8 +91,24 @@ class MainViewModel : ViewModel() {
                     val folders = it.rootFolders.toMutableList()
                     if (!folders.contains(intent.uri)) {
                         folders.add(intent.uri)
+                        viewModelScope.launch(Dispatchers.IO) {
+                            prefs.edit().putStringSet("root_folders", folders.toSet()).apply()
+                        }
                     }
                     it.copy(rootFolders = folders, currentScreen = Screen.JournalList)
+                }
+            }
+            is MainIntent.RemoveRootFolder -> {
+                _state.update {
+                    val folders = it.rootFolders.toMutableList()
+                    folders.remove(intent.uri)
+                    viewModelScope.launch(Dispatchers.IO) {
+                        prefs.edit().putStringSet("root_folders", folders.toSet()).apply()
+                    }
+                    it.copy(
+                        rootFolders = folders,
+                        currentScreen = if (folders.isEmpty()) Screen.SelectFolder else it.currentScreen
+                    )
                 }
             }
             is MainIntent.OpenFolder -> {
@@ -107,6 +140,29 @@ class MainViewModel : ViewModel() {
 fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
     val context = LocalContext.current
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            onIntent(MainIntent.SelectRootFolder(uri.toString()))
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Button(onClick = { folderLauncher.launch(null) }) {
+            Text("Select Journal Folder")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, takeFlags)
@@ -162,37 +218,6 @@ fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Button(onClick = { folderLauncher.launch(null) }) {
-            Text("Select Journal Folder")
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
-            Text("New Journal")
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
-            Text("Import Beancount File")
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-            onIntent(MainIntent.SelectRootFolder(uri.toString()))
-        }
-    }
-
     Scaffold(
         topBar = { TopAppBar(title = { Text("Journals") }) },
         floatingActionButton = {
@@ -201,14 +226,37 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
             }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
-            items(state.rootFolders) { folderUriStr ->
-                val folderUri = Uri.parse(folderUriStr)
-                val documentFile = DocumentFile.fromTreeUri(context, folderUri)
-                ListItem(
-                    headlineContent = { Text(documentFile?.name ?: "Unknown Folder") },
-                    modifier = Modifier.clickable { onIntent(MainIntent.OpenFolder(folderUriStr)) }
-                )
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
+                    Text("New Journal")
+                }
+                Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
+                    Text("Import Beancount File")
+                }
+            }
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(state.rootFolders) { folderUriStr ->
+                    val folderUri = Uri.parse(folderUriStr)
+                    var folderName by remember { mutableStateOf<String?>("Loading...") }
+
+                    LaunchedEffect(folderUri) {
+                        try {
+                            val documentFile = DocumentFile.fromTreeUri(context, folderUri)
+                            folderName = documentFile?.name ?: "Unknown Folder"
+                        } catch (e: SecurityException) {
+                            onIntent(MainIntent.RemoveRootFolder(folderUriStr))
+                        }
+                    }
+
+                    ListItem(
+                        headlineContent = { Text(folderName ?: "Unknown Folder") },
+                        modifier = Modifier.clickable { onIntent(MainIntent.OpenFolder(folderUriStr)) }
+                    )
+                }
             }
         }
     }
@@ -220,8 +268,21 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     val context = LocalContext.current
     val folderUriStr = (state.currentScreen as Screen.FileList).folderUri
     val folderUri = Uri.parse(folderUriStr)
-    val folderFile = DocumentFile.fromTreeUri(context, folderUri)
-    val files = folderFile?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
+    var folderName by remember { mutableStateOf<String?>("Loading...") }
+    var files by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var folderFile by remember { mutableStateOf<DocumentFile?>(null) }
+
+    LaunchedEffect(folderUri) {
+        try {
+            val file = DocumentFile.fromTreeUri(context, folderUri)
+            folderFile = file
+            folderName = file?.name ?: "Files"
+            files = file?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
+        } catch (e: SecurityException) {
+            onIntent(MainIntent.RemoveRootFolder(folderUriStr))
+            onIntent(MainIntent.NavigateBack)
+        }
+    }
 
     BackHandler {
         onIntent(MainIntent.NavigateBack)
@@ -230,7 +291,7 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(folderFile?.name ?: "Files") },
+                title = { Text(folderName ?: "Files") },
                 navigationIcon = {
                     IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -427,7 +488,16 @@ class MainActivity : ComponentActivity() {
                             val fileUri = currentScreen.fileUri
                             val context = LocalContext.current
                             val uri = Uri.parse(fileUri)
-                            val file = DocumentFile.fromSingleUri(context, uri)
+                            var fileName by remember { mutableStateOf<String?>("Loading...") }
+
+                            LaunchedEffect(uri) {
+                                try {
+                                    val file = DocumentFile.fromSingleUri(context, uri)
+                                    fileName = file?.name ?: "Editor"
+                                } catch (e: SecurityException) {
+                                    viewModel.processIntent(MainIntent.NavigateBack)
+                                }
+                            }
 
                             val coroutineScope = rememberCoroutineScope()
 
@@ -471,7 +541,7 @@ class MainActivity : ComponentActivity() {
                                 topBar = {
                                     @OptIn(ExperimentalMaterial3Api::class)
                                     TopAppBar(
-                                        title = { Text(file?.name ?: "Editor") },
+                                        title = { Text(fileName ?: "Editor") },
                                         navigationIcon = {
                                             IconButton(onClick = { viewModel.processIntent(MainIntent.NavigateBack) }) {
                                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
