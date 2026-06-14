@@ -500,8 +500,11 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(uri) {
                                 try {
-                                    val file = DocumentFile.fromSingleUri(context, uri)
-                                    fileName = file?.name ?: "Editor"
+                                    val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        val file = DocumentFile.fromSingleUri(context, uri)
+                                        file?.name ?: "Editor"
+                                    }
+                                    fileName = name
                                 } catch (e: SecurityException) {
                                     viewModel.processIntent(MainIntent.NavigateBack)
                                 }
