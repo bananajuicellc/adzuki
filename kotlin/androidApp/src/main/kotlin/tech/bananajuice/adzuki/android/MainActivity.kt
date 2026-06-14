@@ -91,11 +91,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val folders = it.rootFolders.toMutableList()
                     if (!folders.contains(intent.uri)) {
                         folders.add(intent.uri)
-                        viewModelScope.launch(Dispatchers.IO) {
-                            prefs.edit().putStringSet("root_folders", folders.toSet()).apply()
-                        }
                     }
                     it.copy(rootFolders = folders, currentScreen = Screen.JournalList)
+                }
+                viewModelScope.launch(Dispatchers.IO) {
+                    prefs.edit().putStringSet("root_folders", _state.value.rootFolders.toSet()).apply()
                 }
             }
             is MainIntent.RemoveRootFolder -> {
