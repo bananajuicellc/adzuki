@@ -245,8 +245,11 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 
                     LaunchedEffect(folderUri) {
                         try {
-                            val documentFile = DocumentFile.fromTreeUri(context, folderUri)
-                            folderName = documentFile?.name ?: "Unknown Folder"
+                            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val documentFile = DocumentFile.fromTreeUri(context, folderUri)
+                                documentFile?.name ?: "Unknown Folder"
+                            }
+                            folderName = name
                         } catch (e: SecurityException) {
                             onIntent(MainIntent.RemoveRootFolder(folderUriStr))
                         }
