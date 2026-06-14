@@ -277,10 +277,15 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
 
     LaunchedEffect(folderUri) {
         try {
-            val file = DocumentFile.fromTreeUri(context, folderUri)
+            val (file, name, filteredFiles) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val file = DocumentFile.fromTreeUri(context, folderUri)
+                val name = file?.name ?: "Files"
+                val filteredFiles = file?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
+                Triple(file, name, filteredFiles)
+            }
             folderFile = file
-            folderName = file?.name ?: "Files"
-            files = file?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
+            folderName = name
+            files = filteredFiles
         } catch (e: SecurityException) {
             onIntent(MainIntent.RemoveRootFolder(folderUriStr))
             onIntent(MainIntent.NavigateBack)
