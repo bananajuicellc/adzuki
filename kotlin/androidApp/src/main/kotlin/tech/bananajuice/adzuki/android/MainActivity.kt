@@ -102,13 +102,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     val folders = it.rootFolders.toMutableList()
                     folders.remove(intent.uri)
-                    viewModelScope.launch(Dispatchers.IO) {
-                        prefs.edit().putStringSet("root_folders", folders.toSet()).apply()
-                    }
                     it.copy(
                         rootFolders = folders,
                         currentScreen = if (folders.isEmpty()) Screen.SelectFolder else it.currentScreen
                     )
+                }
+                viewModelScope.launch(Dispatchers.IO) {
+                    prefs.edit().putStringSet("root_folders", _state.value.rootFolders.toSet()).apply()
                 }
             }
             is MainIntent.OpenFolder -> {
