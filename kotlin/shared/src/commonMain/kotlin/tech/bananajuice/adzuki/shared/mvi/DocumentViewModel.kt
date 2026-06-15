@@ -43,6 +43,60 @@ class DocumentViewModel(
                 }
             }
             is DocumentIntent.SaveTransaction -> saveTransaction(intent.transaction)
+
+            is DocumentIntent.StartEditingAccount -> {
+                _state.update {
+                    it.copy(
+                        isEditingAccount = true,
+                        accountBeingEdited = intent.account
+                    )
+                }
+            }
+            is DocumentIntent.CancelEditingAccount -> {
+                _state.update {
+                    it.copy(
+                        isEditingAccount = false,
+                        accountBeingEdited = null
+                    )
+                }
+            }
+            is DocumentIntent.SaveAccount -> saveAccount(intent.account)
+
+            is DocumentIntent.StartEditingClose -> {
+                _state.update {
+                    it.copy(
+                        isEditingClose = true,
+                        closeBeingEdited = intent.closeDirective
+                    )
+                }
+            }
+            is DocumentIntent.CancelEditingClose -> {
+                _state.update {
+                    it.copy(
+                        isEditingClose = false,
+                        closeBeingEdited = null
+                    )
+                }
+            }
+            is DocumentIntent.SaveClose -> saveClose(intent.closeDirective)
+
+            is DocumentIntent.StartEditingOption -> {
+                _state.update {
+                    it.copy(
+                        isEditingOption = true,
+                        optionBeingEdited = intent.option
+                    )
+                }
+            }
+            is DocumentIntent.CancelEditingOption -> {
+                _state.update {
+                    it.copy(
+                        isEditingOption = false,
+                        optionBeingEdited = null
+                    )
+                }
+            }
+            is DocumentIntent.SaveOption -> saveOption(intent.option)
             is DocumentIntent.DeleteDirective -> deleteDirective(intent.id)
             is DocumentIntent.DismissError -> {
                 _state.update { it.copy(errorMessage = null) }
@@ -68,7 +122,6 @@ class DocumentViewModel(
             try {
                 val doc = document ?: return@launch
 
-                // If ID is < 0, we assume it's a new transaction being added
                 if (transaction.id < 0L) {
                     doc.addTransaction(transaction)
                 } else {
@@ -88,6 +141,90 @@ class DocumentViewModel(
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(errorMessage = "Failed to save transaction: ${e.message}") }
+            }
+        }
+    }
+
+    private fun saveAccount(account: tech.bananajuice.adzuki.shared.automerge.AccountDirective) {
+        coroutineScope.launch {
+            try {
+                val doc = document ?: return@launch
+
+                if (account.id < 0L) {
+                    doc.addAccount(account)
+                } else {
+                    doc.updateAccount(account)
+                }
+
+                val bytes = doc.save()
+                saveDocumentBytes(bytes)
+
+                val directives = doc.getDirectives()
+                _state.update {
+                    it.copy(
+                        directives = directives,
+                        isEditingAccount = false,
+                        accountBeingEdited = null
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to save account: ${e.message}") }
+            }
+        }
+    }
+
+    private fun saveClose(closeDirective: tech.bananajuice.adzuki.shared.automerge.CloseDirective) {
+        coroutineScope.launch {
+            try {
+                val doc = document ?: return@launch
+
+                if (closeDirective.id < 0L) {
+                    doc.addCloseDirective(closeDirective)
+                } else {
+                    doc.updateCloseDirective(closeDirective)
+                }
+
+                val bytes = doc.save()
+                saveDocumentBytes(bytes)
+
+                val directives = doc.getDirectives()
+                _state.update {
+                    it.copy(
+                        directives = directives,
+                        isEditingClose = false,
+                        closeBeingEdited = null
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to save close directive: ${e.message}") }
+            }
+        }
+    }
+
+    private fun saveOption(option: tech.bananajuice.adzuki.shared.automerge.OptionDirective) {
+        coroutineScope.launch {
+            try {
+                val doc = document ?: return@launch
+
+                if (option.id < 0L) {
+                    doc.addOption(option)
+                } else {
+                    doc.updateOption(option)
+                }
+
+                val bytes = doc.save()
+                saveDocumentBytes(bytes)
+
+                val directives = doc.getDirectives()
+                _state.update {
+                    it.copy(
+                        directives = directives,
+                        isEditingOption = false,
+                        optionBeingEdited = null
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to save option: ${e.message}") }
             }
         }
     }

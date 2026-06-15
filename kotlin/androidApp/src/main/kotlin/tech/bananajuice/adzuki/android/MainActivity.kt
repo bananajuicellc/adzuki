@@ -43,6 +43,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tech.bananajuice.adzuki.shared.automerge.*
+import tech.bananajuice.adzuki.shared.automerge.OptionDirective
+import tech.bananajuice.adzuki.shared.automerge.CloseDirective
 import tech.bananajuice.adzuki.shared.mvi.*
 
 sealed class Screen {
@@ -329,12 +331,209 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AccountEditDialog(
+    account: AccountDirective?,
+    onSave: (AccountDirective) -> Unit,
+    onDismiss: () -> Unit,
+    directives: List<Directive>
+) {
+    var date by remember { mutableStateOf(account?.date ?: java.time.LocalDate.now().toString()) }
+    var name by remember { mutableStateOf(account?.name ?: "") }
+    var currencies by remember { mutableStateOf(account?.constraintCurrencies?.joinToString(",") ?: "") }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val accountSuggestions = remember(directives) { getAccountSuggestions(directives) }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = java.time.LocalDate.parse(date)
+                .atStartOfDay(java.time.ZoneId.of("UTC"))
+                .toInstant()
+                .toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        date = java.time.Instant.ofEpochMilli(it)
+                            .atZone(java.time.ZoneId.of("UTC"))
+                            .toLocalDate()
+                            .toString()
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (account == null) "Add Account" else "Edit Account") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = {},
+                    label = { Text("Date") },
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Filled.DateRange, contentDescription = "Select Date")
+                        }
+                    }
+                )
+                AutocompleteAccountField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Account Name",
+                    suggestions = accountSuggestions
+                )
+                OutlinedTextField(
+                    value = currencies,
+                    onValueChange = { currencies = it },
+                    label = { Text("Currencies (comma separated)") }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(AccountDirective(account?.id ?: -1L, date, name, currencies.split(",").map { it.trim() }.filter { it.isNotEmpty() }))
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CloseEditDialog(
+    closeDirective: CloseDirective?,
+    onSave: (CloseDirective) -> Unit,
+    onDismiss: () -> Unit,
+    directives: List<Directive>
+) {
+    var date by remember { mutableStateOf(closeDirective?.date ?: java.time.LocalDate.now().toString()) }
+    var accountName by remember { mutableStateOf(closeDirective?.account ?: "") }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val accountSuggestions = remember(directives) { getAccountSuggestions(directives) }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = java.time.LocalDate.parse(date)
+                .atStartOfDay(java.time.ZoneId.of("UTC"))
+                .toInstant()
+                .toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        date = java.time.Instant.ofEpochMilli(it)
+                            .atZone(java.time.ZoneId.of("UTC"))
+                            .toLocalDate()
+                            .toString()
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (closeDirective == null) "Close Account" else "Edit Close Account") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = {},
+                    label = { Text("Date") },
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Filled.DateRange, contentDescription = "Select Date")
+                        }
+                    }
+                )
+                AutocompleteAccountField(
+                    value = accountName,
+                    onValueChange = { accountName = it },
+                    label = "Account Name",
+                    suggestions = accountSuggestions
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(CloseDirective(closeDirective?.id ?: -1L, date, accountName))
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun OptionEditDialog(
+    option: OptionDirective?,
+    onSave: (OptionDirective) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(option?.name ?: "") }
+    var value by remember { mutableStateOf(option?.value ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (option == null) "Add Option" else "Edit Option") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") }
+                )
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    label = { Text("Value") }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(OptionDirective(option?.id ?: -1L, name, value))
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEditDialog(
     transaction: TransactionDirective?,
     onSave: (TransactionDirective) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    directives: List<Directive>
 ) {
     var date by remember { mutableStateOf(transaction?.date ?: java.time.LocalDate.now().toString()) }
     var payee by remember { mutableStateOf(transaction?.payee ?: "") }
@@ -461,6 +660,82 @@ fun TransactionEditDialog(
     )
 }
 
+
+fun getAccountSuggestions(directives: List<Directive>): List<String> {
+    val roots = mutableMapOf(
+        "name_assets" to "Assets",
+        "name_liabilities" to "Liabilities",
+        "name_equity" to "Equity",
+        "name_income" to "Income",
+        "name_expenses" to "Expenses"
+    )
+    directives.filterIsInstance<OptionDirective>().forEach { opt ->
+        if (roots.containsKey(opt.name)) {
+            roots[opt.name] = opt.value
+        }
+    }
+
+    val suggestions = mutableSetOf<String>()
+    suggestions.addAll(roots.values)
+
+    directives.forEach { dir ->
+        when (dir) {
+            is AccountDirective -> suggestions.add(dir.name)
+            is CloseDirective -> suggestions.add(dir.account)
+            is TransactionDirective -> dir.postings.forEach { p -> suggestions.add(p.account) }
+            else -> {}
+        }
+    }
+    return suggestions.toList().sorted()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutocompleteAccountField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    suggestions: List<String>,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = true
+            },
+            label = { Text(label) },
+            modifier = Modifier.menuAnchor(),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+        )
+        val filtered = suggestions.filter { it.contains(value, ignoreCase = true) }
+        if (filtered.isNotEmpty() && expanded) {
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                filtered.forEach { selectionOption ->
+                    DropdownMenuItem(
+                        text = { Text(selectionOption) },
+                        onClick = {
+                            onValueChange(selectionOption)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     init {
@@ -567,10 +842,44 @@ class MainActivity : ComponentActivity() {
                                 },
                                 floatingActionButton = {
                                     if (selectedTab == 0) {
-                                        FloatingActionButton(onClick = {
-                                            docViewModel.processIntent(DocumentIntent.StartEditingTransaction(null))
-                                        }) {
-                                            Icon(Icons.Filled.Add, contentDescription = "Add Transaction")
+                                        var showFabMenu by remember { mutableStateOf(false) }
+                                        Box {
+                                            FloatingActionButton(onClick = { showFabMenu = !showFabMenu }) {
+                                                Icon(Icons.Filled.Add, contentDescription = "Add Directive")
+                                            }
+                                            DropdownMenu(
+                                                expanded = showFabMenu,
+                                                onDismissRequest = { showFabMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Transaction") },
+                                                    onClick = {
+                                                        showFabMenu = false
+                                                        docViewModel.processIntent(DocumentIntent.StartEditingTransaction(null))
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Open Account") },
+                                                    onClick = {
+                                                        showFabMenu = false
+                                                        docViewModel.processIntent(DocumentIntent.StartEditingAccount(null))
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Close Account") },
+                                                    onClick = {
+                                                        showFabMenu = false
+                                                        docViewModel.processIntent(DocumentIntent.StartEditingClose(null))
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Option") },
+                                                    onClick = {
+                                                        showFabMenu = false
+                                                        docViewModel.processIntent(DocumentIntent.StartEditingOption(null))
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -596,6 +905,28 @@ class MainActivity : ComponentActivity() {
                                                                 trailingContent = {
                                                                     IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
                                                                         Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
+                                                                    }
+                                                                }
+                                                            )
+                                                        }
+                                                        is OptionDirective -> {
+                                                            ListItem(
+                                                                headlineContent = { Text("Option: ${dir.name}") },
+                                                                supportingContent = { Text("Value: ${dir.value}") },
+                                                                trailingContent = {
+                                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Option")
+                                                                    }
+                                                                }
+                                                            )
+                                                        }
+                                                        is CloseDirective -> {
+                                                            ListItem(
+                                                                headlineContent = { Text("Close: ${dir.account}") },
+                                                                supportingContent = { Text("Date: ${dir.date}") },
+                                                                trailingContent = {
+                                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Close Directive")
                                                                     }
                                                                 }
                                                             )
@@ -638,7 +969,31 @@ class MainActivity : ComponentActivity() {
                                 TransactionEditDialog(
                                     transaction = docState.transactionBeingEdited,
                                     onSave = { docViewModel.processIntent(DocumentIntent.SaveTransaction(it)) },
-                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingTransaction) }
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingTransaction) },
+                                    directives = docState.directives
+                                )
+                            }
+                            if (docState.isEditingAccount) {
+                                AccountEditDialog(
+                                    account = docState.accountBeingEdited,
+                                    onSave = { docViewModel.processIntent(DocumentIntent.SaveAccount(it)) },
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingAccount) },
+                                    directives = docState.directives
+                                )
+                            }
+                            if (docState.isEditingClose) {
+                                CloseEditDialog(
+                                    closeDirective = docState.closeBeingEdited,
+                                    onSave = { docViewModel.processIntent(DocumentIntent.SaveClose(it)) },
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingClose) },
+                                    directives = docState.directives
+                                )
+                            }
+                            if (docState.isEditingOption) {
+                                OptionEditDialog(
+                                    option = docState.optionBeingEdited,
+                                    onSave = { docViewModel.processIntent(DocumentIntent.SaveOption(it)) },
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingOption) }
                                 )
                             }
                         }
