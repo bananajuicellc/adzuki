@@ -558,6 +558,7 @@ fun TransactionEditDialog(
     var memo by remember { mutableStateOf(transaction?.memo ?: "") }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val accountSuggestions = remember(directives) { getAccountSuggestions(directives) }
 
     // Convert current postings to mutable state list for UI editing
     val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
@@ -629,10 +630,11 @@ fun TransactionEditDialog(
                     items(postings.size) { i ->
                         val p = postings[i]
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
+                            AutocompleteAccountField(
                                 value = p.account,
                                 onValueChange = { postings[i] = p.copy(account = it) },
-                                label = { Text("Acct") },
+                                label = "Acct",
+                                suggestions = accountSuggestions,
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
