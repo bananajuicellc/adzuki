@@ -558,7 +558,9 @@ fun TransactionEditDialog(
     var memo by remember { mutableStateOf(transaction?.memo ?: "") }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val accountSuggestions = remember(directives) { getAccountSuggestions(directives) }
+val filtered = suggestions
+    .filter { it.contains(value, ignoreCase = true) }
+    .take(10) // Limit to top 10 matches
 
     // Convert current postings to mutable state list for UI editing
     val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
