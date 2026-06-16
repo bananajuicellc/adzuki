@@ -438,10 +438,19 @@ fun CloseEditDialog(
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = java.time.LocalDate.parse(date)
-                .atStartOfDay(java.time.ZoneId.of("UTC"))
-                .toInstant()
-                .toEpochMilli()
+            initialSelectedDateMillis = remember(date) {
+                try {
+                    java.time.LocalDate.parse(date)
+                        .atStartOfDay(java.time.ZoneOffset.UTC)
+                        .toInstant()
+                        .toEpochMilli()
+                } catch (e: java.time.format.DateTimeParseException) {
+                    java.time.LocalDate.now()
+                        .atStartOfDay(java.time.ZoneOffset.UTC)
+                        .toInstant()
+                        .toEpochMilli()
+                }
+            }
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
