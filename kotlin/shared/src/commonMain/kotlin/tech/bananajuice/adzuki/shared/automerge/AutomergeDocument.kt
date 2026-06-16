@@ -10,6 +10,19 @@ sealed interface Directive {
     val id: Long
 }
 
+
+data class OptionDirective(
+    override val id: Long,
+    val name: String,
+    val value: String
+) : Directive
+
+data class CloseDirective(
+    override val id: Long,
+    val date: String,
+    val account: String
+) : Directive
+
 data class AccountDirective(
     override val id: Long,
     val date: String,
@@ -71,6 +84,37 @@ class AutomergeDocument {
         }
     }
 
+
+    fun addOption(option: OptionDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val len = getLength(tx, directives)
+
+            val optionDir = tx.insert(directives, len, ObjectType.MAP)
+            tx.set(optionDir, "type", "Option")
+            tx.set(optionDir, "name", option.name)
+            tx.set(optionDir, "value", option.value)
+
+            tx.commit()
+        }
+    }
+
+    fun updateOption(option: OptionDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val dirOpt = tx.get(directives, option.id)
+            if (dirOpt.isPresent) {
+                val dirVal = dirOpt.get()
+                if (dirVal is AmValue.Map) {
+                    val optionDir = dirVal.id
+                    tx.set(optionDir, "name", option.name)
+                    tx.set(optionDir, "value", option.value)
+                }
+            }
+            tx.commit()
+        }
+    }
+
     fun addAccount(account: AccountDirective) {
         doc.startTransaction().use { tx ->
             val directives = ensureVersionAndDirectives(tx)
@@ -86,6 +130,68 @@ class AutomergeDocument {
                 tx.insert(currenciesList, i.toLong(), c)
             }
 
+            tx.commit()
+        }
+    }
+
+
+    fun updateAccount(account: AccountDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val dirOpt = tx.get(directives, account.id)
+            if (dirOpt.isPresent) {
+                val dirVal = dirOpt.get()
+                if (dirVal is AmValue.Map) {
+                    val accountDir = dirVal.id
+                    tx.set(accountDir, "name", account.name)
+                    tx.set(accountDir, "date", account.date)
+
+                    val currListOpt = tx.get(accountDir, "constraint_currencies")
+                    val currList = if (currListOpt.isPresent && currListOpt.get() is AmValue.List) {
+                        val listId = (currListOpt.get() as AmValue.List).id
+                        val clen = getLength(tx, listId)
+                        for (i in (clen - 1L) downTo 0L) {
+                            tx.delete(listId, i)
+                        }
+                        listId
+                    } else {
+                        tx.set(accountDir, "constraint_currencies", ObjectType.LIST)
+                    }
+                    account.constraintCurrencies.forEachIndexed { i, c ->
+                        tx.insert(currList, i.toLong(), c)
+                    }
+                }
+            }
+            tx.commit()
+        }
+    }
+
+    fun addCloseDirective(closeDirective: CloseDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val len = getLength(tx, directives)
+
+            val closeDir = tx.insert(directives, len, ObjectType.MAP)
+            tx.set(closeDir, "type", "Close")
+            tx.set(closeDir, "account", closeDirective.account)
+            tx.set(closeDir, "date", closeDirective.date)
+
+            tx.commit()
+        }
+    }
+
+    fun updateCloseDirective(closeDirective: CloseDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val dirOpt = tx.get(directives, closeDirective.id)
+            if (dirOpt.isPresent) {
+                val dirVal = dirOpt.get()
+                if (dirVal is AmValue.Map) {
+                    val closeDir = dirVal.id
+                    tx.set(closeDir, "account", closeDirective.account)
+                    tx.set(closeDir, "date", closeDirective.date)
+                }
+            }
             tx.commit()
         }
     }
@@ -159,6 +265,19 @@ class AutomergeDocument {
             }
             tx.commit()
         }
+    }
+
+
+    private fun parseOption(tx: Transaction, dirObj: ObjectId, index: Long): OptionDirective? {
+        val name = tx.get(dirObj, "name").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        val value = tx.get(dirObj, "value").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        return OptionDirective(index, name, value)
+    }
+
+    private fun parseClose(tx: Transaction, dirObj: ObjectId, index: Long): CloseDirective? {
+        val account = tx.get(dirObj, "account").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        val date = tx.get(dirObj, "date").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        return CloseDirective(index, date, account)
     }
 
     private fun parseAccount(tx: Transaction, dirObj: ObjectId, index: Long): AccountDirective? {
@@ -238,7 +357,9 @@ class AutomergeDocument {
                             val typeVal = typeOpt.get()
                             if (typeVal is AmValue.Str) {
                                 when (typeVal.value) {
+                                    "Option" -> parseOption(tx, dirVal.id, i)?.let { result.add(it) }
                                     "Account" -> parseAccount(tx, dirVal.id, i)?.let { result.add(it) }
+                                    "Close" -> parseClose(tx, dirVal.id, i)?.let { result.add(it) }
                                     "Transaction" -> parseTransaction(tx, dirVal.id, i)?.let { result.add(it) }
                                 }
                             }

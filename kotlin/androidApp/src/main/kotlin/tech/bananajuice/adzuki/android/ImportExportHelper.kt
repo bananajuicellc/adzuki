@@ -19,6 +19,22 @@ fun importFromBeancount(beancountText: String): AutomergeDocument {
                     constraintCurrencies = directive.currencies
                 )
             )
+        } else if (directive is BeancountNode.OptionDirective) {
+            doc.addOption(
+                OptionDirective(
+                    id = nextId++,
+                    name = directive.name,
+                    value = directive.value
+                )
+            )
+        } else if (directive is BeancountNode.CloseDirective) {
+            doc.addCloseDirective(
+                CloseDirective(
+                    id = nextId++,
+                    date = directive.date,
+                    account = directive.account
+                )
+            )
         } else if (directive is BeancountNode.Transaction) {
             val postings = directive.postings.map { p: uniffi.adzuki.Posting ->
                 tech.bananajuice.adzuki.shared.automerge.Posting(
@@ -50,6 +66,12 @@ fun exportToBeancount(directives: List<Directive>): String {
                 sb.append(" ${dir.constraintCurrencies.joinToString(",")}")
             }
             sb.append("\n\n")
+        } else if (dir is OptionDirective) {
+            val safeName = dir.name.replace("\"", "\\\"")
+            val safeValue = dir.value.replace("\"", "\\\"")
+            sb.append("option \"$safeName\" \"$safeValue\"\n\n")
+        } else if (dir is CloseDirective) {
+            sb.append("${dir.date} close ${dir.account}\n\n")
         } else if (dir is TransactionDirective) {
             val safePayee = dir.payee.replace("\"", "\\\"")
             val safeMemo = dir.memo.replace("\"", "\\\"")
