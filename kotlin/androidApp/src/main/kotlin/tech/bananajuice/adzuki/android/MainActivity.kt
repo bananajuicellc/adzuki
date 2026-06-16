@@ -633,29 +633,30 @@ fun TransactionEditDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 AutocompleteAccountField(
                                     value = p.account,
-                                    onValueChange = { postings[i] = p.copy(account = it) },
+                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(account = it) },
                                     label = "Account",
                                     suggestions = accountSuggestions,
                                     modifier = Modifier.weight(1f)
                                 )
-                                IconButton(onClick = { postings.removeAt(i) }) {
+                                IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = p.amount,
-                                    onValueChange = { postings[i] = p.copy(amount = it) },
+                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(amount = it) },
                                     label = { Text("Amount") },
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 OutlinedTextField(
                                     value = p.currency,
-                                    onValueChange = { postings[i] = p.copy(currency = it) },
+                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(currency = it) },
                                     label = { Text("Currency") },
                                     modifier = Modifier.weight(1f)
                                 )
+                                Spacer(modifier = Modifier.width(48.dp))
                             }
                         }
                     }
