@@ -629,28 +629,33 @@ fun TransactionEditDialog(
                 LazyColumn(modifier = Modifier.height(200.dp)) {
                     items(postings.size) { i ->
                         val p = postings[i]
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AutocompleteAccountField(
-                                value = p.account,
-                                onValueChange = { postings[i] = p.copy(account = it) },
-                                label = "Acct",
-                                suggestions = accountSuggestions,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = p.amount,
-                                onValueChange = { postings[i] = p.copy(amount = it) },
-                                label = { Text("Amt") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = p.currency,
-                                onValueChange = { postings[i] = p.copy(currency = it) },
-                                label = { Text("Cur") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(onClick = { postings.removeAt(i) }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AutocompleteAccountField(
+                                    value = p.account,
+                                    onValueChange = { postings[i] = p.copy(account = it) },
+                                    label = "Account",
+                                    suggestions = accountSuggestions,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { postings.removeAt(i) }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = p.amount,
+                                    onValueChange = { postings[i] = p.copy(amount = it) },
+                                    label = { Text("Amount") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                OutlinedTextField(
+                                    value = p.currency,
+                                    onValueChange = { postings[i] = p.copy(currency = it) },
+                                    label = { Text("Currency") },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }
