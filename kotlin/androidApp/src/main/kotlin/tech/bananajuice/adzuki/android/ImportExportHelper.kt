@@ -67,7 +67,9 @@ fun exportToBeancount(directives: List<Directive>): String {
             }
             sb.append("\n\n")
         } else if (dir is OptionDirective) {
-            sb.append("option \"${dir.name}\" \"${dir.value}\"\n\n")
+            val safeName = dir.name.replace("\"", "\\\"")
+            val safeValue = dir.value.replace("\"", "\\\"")
+            sb.append("option \"$safeName\" \"$safeValue\"\n\n")
         } else if (dir is CloseDirective) {
             sb.append("${dir.date} close ${dir.account}\n\n")
         } else if (dir is TransactionDirective) {
