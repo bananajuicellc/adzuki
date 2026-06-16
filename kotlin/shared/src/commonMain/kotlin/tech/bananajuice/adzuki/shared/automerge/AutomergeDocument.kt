@@ -147,20 +147,18 @@ class AutomergeDocument {
                     tx.set(accountDir, "date", account.date)
 
                     val currListOpt = tx.get(accountDir, "constraint_currencies")
-                    if (currListOpt.isPresent) {
-                        val currListVal = currListOpt.get()
-                        if (currListVal is AmValue.List) {
-                            val currList = currListVal.id
-                            // Clear existing
-                            val clen = getLength(tx, currList)
-                            for (i in (clen - 1L) downTo 0L) {
-                                tx.delete(currList, i)
-                            }
-                            // Insert new
-                            account.constraintCurrencies.forEachIndexed { i, c ->
-                                tx.insert(currList, i.toLong(), c)
-                            }
+                    val currList = if (currListOpt.isPresent && currListOpt.get() is AmValue.List) {
+                        val listId = (currListOpt.get() as AmValue.List).id
+                        val clen = getLength(tx, listId)
+                        for (i in (clen - 1L) downTo 0L) {
+                            tx.delete(listId, i)
                         }
+                        listId
+                    } else {
+                        tx.set(accountDir, "constraint_currencies", ObjectType.LIST)
+                    }
+                    account.constraintCurrencies.forEachIndexed { i, c ->
+                        tx.insert(currList, i.toLong(), c)
                     }
                 }
             }
