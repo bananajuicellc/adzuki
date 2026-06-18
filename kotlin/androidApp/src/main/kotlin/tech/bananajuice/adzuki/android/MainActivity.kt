@@ -690,27 +690,28 @@ fun TransactionEditDialog(
 
 
 fun getCurrencySuggestions(directives: List<Directive>): List<String> {
-
     val suggestions = mutableSetOf<String>()
-
     directives.forEach { dir ->
-
         when (dir) {
-
-            is OptionDirective -> if (dir.name == "operating_currency") suggestions.add(dir.value)
-
-            is AccountDirective -> suggestions.addAll(dir.constraintCurrencies)
-
-            is TransactionDirective -> dir.postings.forEach { p -> if (p.currency.isNotEmpty()) suggestions.add(p.currency) }
-
+            is OptionDirective -> {
+                if (dir.name == "operating_currency" && dir.value.isNotEmpty()) {
+                    suggestions.add(dir.value)
+                }
+            }
+            is AccountDirective -> {
+                suggestions.addAll(dir.constraintCurrencies.filter { it.isNotEmpty() })
+            }
+            is TransactionDirective -> {
+                dir.postings.forEach { p ->
+                    if (p.currency.isNotEmpty()) {
+                        suggestions.add(p.currency)
+                    }
+                }
+            }
             else -> {}
-
         }
-
     }
-
     return suggestions.toList().sorted()
-
 }
 
 
