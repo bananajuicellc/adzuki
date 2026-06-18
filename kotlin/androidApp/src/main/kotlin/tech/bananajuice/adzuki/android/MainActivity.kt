@@ -657,7 +657,7 @@ fun TransactionEditDialog(
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(currency = it) },
                                     label = "Currency",
                                     suggestions = currencySuggestions,
-                                    modifier = Modifier.width(120.dp)
+                                    modifier = Modifier.width(200.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
