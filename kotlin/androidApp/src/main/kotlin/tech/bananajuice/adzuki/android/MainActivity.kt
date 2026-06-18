@@ -399,7 +399,7 @@ fun AccountEditDialog(
                         }
                     }
                 )
-                AutocompleteAccountField(
+                AutocompleteTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = "Account Name",
@@ -489,7 +489,7 @@ fun CloseEditDialog(
                         }
                     }
                 )
-                AutocompleteAccountField(
+                AutocompleteTextField(
                     value = accountName,
                     onValueChange = { accountName = it },
                     label = "Account Name",
@@ -559,6 +559,7 @@ fun TransactionEditDialog(
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val accountSuggestions = remember(directives) { getAccountSuggestions(directives) }
+    val currencySuggestions = remember(directives) { getCurrencySuggestions(directives) }
 
     // Convert current postings to mutable state list for UI editing
     val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
@@ -631,7 +632,7 @@ fun TransactionEditDialog(
                         val p = postings[i]
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                AutocompleteAccountField(
+                                AutocompleteTextField(
                                     value = p.account,
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(account = it) },
                                     label = "Account",
@@ -650,10 +651,11 @@ fun TransactionEditDialog(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
+                                AutocompleteTextField(
                                     value = p.currency,
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(currency = it) },
-                                    label = { Text("Currency") },
+                                    label = "Currency",
+                                    suggestions = currencySuggestions,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(48.dp))
@@ -687,6 +689,34 @@ fun TransactionEditDialog(
 }
 
 
+fun getCurrencySuggestions(directives: List<Directive>): List<String> {
+    val suggestions = mutableSetOf<String>()
+    directives.forEach { dir ->
+        when (dir) {
+            is OptionDirective -> {
+                if (dir.name == "operating_currency" && dir.value.isNotEmpty()) {
+                    suggestions.add(dir.value)
+                }
+            }
+            is AccountDirective -> {
+                suggestions.addAll(dir.constraintCurrencies.filter { it.isNotEmpty() })
+            }
+            is TransactionDirective -> {
+                dir.postings.forEach { p ->
+                    if (p.currency.isNotEmpty()) {
+                        suggestions.add(p.currency)
+                    }
+                }
+            }
+            else -> {}
+        }
+    }
+    return suggestions.toList().sorted()
+}
+
+
+
+
 fun getAccountSuggestions(directives: List<Directive>): List<String> {
     val roots = mutableMapOf(
         "name_assets" to "Assets",
@@ -717,7 +747,7 @@ fun getAccountSuggestions(directives: List<Directive>): List<String> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutocompleteAccountField(
+fun AutocompleteTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
