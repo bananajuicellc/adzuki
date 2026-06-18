@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -631,24 +633,23 @@ fun TransactionEditDialog(
                     items(postings.size) { i ->
                         val p = postings[i]
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
                                 AutocompleteTextField(
                                     value = p.account,
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(account = it) },
                                     label = "Account",
                                     suggestions = accountSuggestions,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.width(200.dp)
                                 )
-                                IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(modifier = Modifier.width(8.dp))
                                 OutlinedTextField(
                                     value = p.amount,
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(amount = it) },
                                     label = { Text("Amount") },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.width(100.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 AutocompleteTextField(
@@ -656,9 +657,12 @@ fun TransactionEditDialog(
                                     onValueChange = { if (i in postings.indices) postings[i] = p.copy(currency = it) },
                                     label = "Currency",
                                     suggestions = currencySuggestions,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.width(120.dp)
                                 )
-                                Spacer(modifier = Modifier.width(48.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                                }
                             }
                         }
                     }
