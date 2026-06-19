@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.runtime.key
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DateRange
@@ -565,7 +566,7 @@ fun TransactionEditDialog(
     val currencySuggestions = remember(directives) { getCurrencySuggestions(directives) }
 
     // Convert current postings to mutable state list for UI editing
-    val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).toTypedArray())) }
+    val postings = remember { mutableStateListOf(*((transaction?.postings ?: emptyList()).map { java.util.UUID.randomUUID() to it }.toTypedArray())) }
 
     if (showDatePicker) {
         val parsedDateMillis = remember(date) {
@@ -631,42 +632,44 @@ fun TransactionEditDialog(
                 Text("Postings", fontWeight = FontWeight.Bold)
 
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    postings.forEachIndexed { i, p ->
-                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.horizontalScroll(rememberScrollState())
-                            ) {
-                                AutocompleteTextField(
-                                    value = p.account,
-                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(account = it) },
-                                    label = "Account",
-                                    suggestions = accountSuggestions,
-                                    modifier = Modifier.width(200.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
-                                    value = p.amount,
-                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(amount = it) },
-                                    label = { Text("Amount") },
-                                    modifier = Modifier.width(100.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                AutocompleteTextField(
-                                    value = p.currency,
-                                    onValueChange = { if (i in postings.indices) postings[i] = p.copy(currency = it) },
-                                    label = "Currency",
-                                    suggestions = currencySuggestions,
-                                    modifier = Modifier.width(200.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                    postings.forEachIndexed { i, (id, p) ->
+                        key(id) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                ) {
+                                    AutocompleteTextField(
+                                        value = p.account,
+                                        onValueChange = { if (i in postings.indices) postings[i] = id to p.copy(account = it) },
+                                        label = "Account",
+                                        suggestions = accountSuggestions,
+                                        modifier = Modifier.width(200.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    OutlinedTextField(
+                                        value = p.amount,
+                                        onValueChange = { if (i in postings.indices) postings[i] = id to p.copy(amount = it) },
+                                        label = { Text("Amount") },
+                                        modifier = Modifier.width(100.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    AutocompleteTextField(
+                                        value = p.currency,
+                                        onValueChange = { if (i in postings.indices) postings[i] = id to p.copy(currency = it) },
+                                        label = "Currency",
+                                        suggestions = currencySuggestions,
+                                        modifier = Modifier.width(200.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(onClick = { if (i in postings.indices) postings.removeAt(i) }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Posting")
+                                    }
                                 }
                             }
                         }
                     }
-                    Button(onClick = { postings.add(Posting("", "", "")) }) {
+                    Button(onClick = { postings.add(java.util.UUID.randomUUID() to Posting("", "", "")) }) {
                         Text("Add Posting")
                     }
                 }
@@ -679,7 +682,7 @@ fun TransactionEditDialog(
                     date = date,
                     payee = payee,
                     memo = memo,
-                    postings = postings.toList()
+                    postings = postings.map { it.second }.toList()
                 )
                 onSave(newTxn)
             }) { Text("Save") }
