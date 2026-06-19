@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -611,7 +612,7 @@ fun TransactionEditDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (transaction != null) "Edit Transaction" else "Add Transaction") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = date,
                     onValueChange = { },
@@ -629,9 +630,8 @@ fun TransactionEditDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Postings", fontWeight = FontWeight.Bold)
 
-                LazyColumn(modifier = Modifier.height(200.dp)) {
-                    items(postings.size) { i ->
-                        val p = postings[i]
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    postings.forEachIndexed { i, p ->
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -666,10 +666,8 @@ fun TransactionEditDialog(
                             }
                         }
                     }
-                    item {
-                        Button(onClick = { postings.add(Posting("", "", "")) }) {
-                            Text("Add Posting")
-                        }
+                    Button(onClick = { postings.add(Posting("", "", "")) }) {
+                        Text("Add Posting")
                     }
                 }
             }
