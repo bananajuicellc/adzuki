@@ -674,7 +674,7 @@ fun TransactionEditDialog(
                         Text("Add Posting")
                     }
 
-                    val imbalances = calculateImbalances(postings.map { it.second })
+                    val imbalances by remember { derivedStateOf { calculateImbalances(postings.map { it.second }) } }
                     if (imbalances.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Column(modifier = Modifier.fillMaxWidth()) {
