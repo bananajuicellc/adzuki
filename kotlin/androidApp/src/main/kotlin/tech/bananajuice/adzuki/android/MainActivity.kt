@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
@@ -672,6 +673,26 @@ fun TransactionEditDialog(
                     Button(onClick = { postings.add(java.util.UUID.randomUUID() to Posting("", "", "")) }) {
                         Text("Add Posting")
                     }
+
+                    val imbalances by remember { derivedStateOf { calculateImbalances(postings.map { it.second }) } }
+                    if (imbalances.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Transaction is unbalanced. Need:",
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
+                            imbalances.forEach { (currency, imbalance) ->
+                                val needed = imbalance.negate()
+                                Text(
+                                    text = "$needed $currency",
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -693,6 +714,22 @@ fun TransactionEditDialog(
     )
 }
 
+
+fun calculateImbalances(postings: List<Posting>): Map<String, java.math.BigDecimal> {
+    val balances = mutableMapOf<String, java.math.BigDecimal>()
+    for (posting in postings) {
+        val amountStr = posting.amount.trim()
+        if (amountStr.isEmpty()) continue
+        val amount = try {
+            java.math.BigDecimal(amountStr)
+        } catch (e: Exception) {
+            continue
+        }
+        val currentBalance = balances[posting.currency] ?: java.math.BigDecimal.ZERO
+        balances[posting.currency] = currentBalance + amount
+    }
+    return balances.filter { it.value.compareTo(java.math.BigDecimal.ZERO) != 0 }
+}
 
 fun getCurrencySuggestions(directives: List<Directive>): List<String> {
     val suggestions = mutableSetOf<String>()
@@ -993,6 +1030,7 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                         is TransactionDirective -> {
+                                                            val imbalances = remember(dir) { calculateImbalances(dir.postings) }
                                                             ListItem(
                                                                 headlineContent = { Text("Transaction: ${dir.payee}") },
                                                                 supportingContent = {
@@ -1004,7 +1042,15 @@ class MainActivity : ComponentActivity() {
                                                                     }
                                                                 },
                                                                 trailingContent = {
-                                                                    Row {
+                                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                        if (imbalances.isNotEmpty()) {
+                                                                            Icon(
+                                                                                Icons.Filled.Warning,
+                                                                                contentDescription = "Unbalanced Transaction",
+                                                                                tint = MaterialTheme.colorScheme.error,
+                                                                                modifier = Modifier.padding(end = 8.dp)
+                                                                            )
+                                                                        }
                                                                         IconButton(onClick = { docViewModel.processIntent(DocumentIntent.StartEditingTransaction(dir)) }) {
                                                                             Icon(Icons.Filled.Edit, contentDescription = "Edit Transaction")
                                                                         }
