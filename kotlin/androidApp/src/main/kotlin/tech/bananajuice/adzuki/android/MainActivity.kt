@@ -1030,7 +1030,7 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                         is TransactionDirective -> {
-                                                            val imbalances = calculateImbalances(dir.postings)
+                                                            val imbalances = remember(dir) { calculateImbalances(dir.postings) }
                                                             ListItem(
                                                                 headlineContent = { Text("Transaction: ${dir.payee}") },
                                                                 supportingContent = {
