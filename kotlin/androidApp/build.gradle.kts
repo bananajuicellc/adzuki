@@ -48,6 +48,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        resources {
+            excludes += "native/**"
+        }
+    }
 }
 
 kotlin {
