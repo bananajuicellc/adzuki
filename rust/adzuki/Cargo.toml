@@ -22,3 +22,7 @@ path = "src/bin/bean-check.rs"
 
 [dev-dependencies]
 rust_decimal_macros = "1.40.0"
+
+[[bin]]
+name = "bean-query"
+path = "src/bin/bean-query.rs"
