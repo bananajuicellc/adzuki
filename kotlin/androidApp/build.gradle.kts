@@ -52,6 +52,8 @@ android {
     packaging {
         resources {
             excludes += "native/**"
+            excludes += "**/*.dylib"
+            excludes += "**/*.dll"
         }
     }
 }
