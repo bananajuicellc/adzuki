@@ -101,6 +101,162 @@ class DocumentViewModel(
             is DocumentIntent.DismissError -> {
                 _state.update { it.copy(errorMessage = null) }
             }
+            is DocumentIntent.StartImportSync -> startImportSync(intent.newDocument)
+            is DocumentIntent.ToggleSyncChange -> {
+                _state.update {
+                    val updatedList = it.syncChanges.toMutableList()
+                    if (intent.index in updatedList.indices) {
+                        updatedList[intent.index] = updatedList[intent.index].toggle()
+                    }
+                    it.copy(syncChanges = updatedList)
+                }
+            }
+            is DocumentIntent.CancelSync -> {
+                _state.update {
+                    it.copy(isSyncing = false, syncChanges = emptyList())
+                }
+            }
+            is DocumentIntent.ApplySyncChanges -> applySyncChanges()
+        }
+    }
+
+    private fun isSimilar(a: tech.bananajuice.adzuki.shared.automerge.Directive, b: tech.bananajuice.adzuki.shared.automerge.Directive): Boolean {
+        if (a::class != b::class) return false
+        return when (a) {
+            is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> {
+                val tb = b as tech.bananajuice.adzuki.shared.automerge.TransactionDirective
+                a.date == tb.date && ((a.payee.isNotEmpty() && a.payee == tb.payee) || (a.memo.isNotEmpty() && a.memo == tb.memo))
+            }
+            is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> {
+                val ab = b as tech.bananajuice.adzuki.shared.automerge.AccountDirective
+                a.name == ab.name
+            }
+            is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> {
+                val cb = b as tech.bananajuice.adzuki.shared.automerge.CloseDirective
+                a.account == cb.account
+            }
+            is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> {
+                val ob = b as tech.bananajuice.adzuki.shared.automerge.OptionDirective
+                a.name == ob.name
+            }
+            else -> false
+        }
+    }
+
+    private fun areDirectivesEqual(a: tech.bananajuice.adzuki.shared.automerge.Directive, b: tech.bananajuice.adzuki.shared.automerge.Directive): Boolean {
+        if (a::class != b::class) return false
+        return when (a) {
+            is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> {
+                val tb = b as tech.bananajuice.adzuki.shared.automerge.TransactionDirective
+                a.date == tb.date && a.payee == tb.payee && a.memo == tb.memo && a.postings == tb.postings
+            }
+            is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> {
+                val ab = b as tech.bananajuice.adzuki.shared.automerge.AccountDirective
+                a.date == ab.date && a.name == ab.name && a.constraintCurrencies == ab.constraintCurrencies
+            }
+            is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> {
+                val cb = b as tech.bananajuice.adzuki.shared.automerge.CloseDirective
+                a.date == cb.date && a.account == cb.account
+            }
+            is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> {
+                val ob = b as tech.bananajuice.adzuki.shared.automerge.OptionDirective
+                a.name == ob.name && a.value == ob.value
+            }
+            else -> false
+        }
+    }
+
+    private fun startImportSync(newDocument: AutomergeDocument) {
+        val currentDirectives = document?.getDirectives() ?: emptyList()
+        val newDirectives = newDocument.getDirectives()
+
+        val changes = mutableListOf<DiffChange>()
+        val unmatchedCurrent = currentDirectives.toMutableList()
+        val unmatchedNew = newDirectives.toMutableList()
+
+        // 1. Exact matches
+        val currentIter = unmatchedCurrent.iterator()
+        while (currentIter.hasNext()) {
+            val curr = currentIter.next()
+            val matchIndex = unmatchedNew.indexOfFirst { areDirectivesEqual(curr, it) }
+            if (matchIndex != -1) {
+                currentIter.remove()
+                unmatchedNew.removeAt(matchIndex)
+            }
+        }
+
+        // 2. Modified (similar but not exact)
+        val modifiedCurrentIter = unmatchedCurrent.iterator()
+        while (modifiedCurrentIter.hasNext()) {
+            val curr = modifiedCurrentIter.next()
+            val matchIndex = unmatchedNew.indexOfFirst { isSimilar(curr, it) }
+            if (matchIndex != -1) {
+                val matchedNew = unmatchedNew[matchIndex]
+                changes.add(DiffChange.Modified(curr, matchedNew))
+                modifiedCurrentIter.remove()
+                unmatchedNew.removeAt(matchIndex)
+            }
+        }
+
+        // 3. Removed
+        unmatchedCurrent.forEach { changes.add(DiffChange.Removed(it)) }
+
+        // 4. Added
+        unmatchedNew.forEach { changes.add(DiffChange.Added(it)) }
+
+        _state.update {
+            it.copy(
+                isSyncing = true,
+                syncChanges = changes
+            )
+        }
+    }
+
+    private fun applySyncChanges() {
+        coroutineScope.launch {
+            try {
+                val doc = document ?: return@launch
+
+                val changesToApply = _state.value.syncChanges.filter { it.selected }
+
+                changesToApply.forEach { change ->
+                    when (change) {
+                        is DiffChange.Modified -> {
+                            when (val newDir = change.newDirective) {
+                                is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.updateTransaction(newDir.copy(id = change.oldDirective.id))
+                                is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.updateAccount(newDir.copy(id = change.oldDirective.id))
+                                is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.updateCloseDirective(newDir.copy(id = change.oldDirective.id))
+                                is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.updateOption(newDir.copy(id = change.oldDirective.id))
+                            }
+                        }
+                        is DiffChange.Removed -> {
+                            doc.deleteDirective(change.directive.id)
+                        }
+                        is DiffChange.Added -> {
+                            when (val dir = change.directive) {
+                                is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.addTransaction(dir.copy(id = -1))
+                                is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.addAccount(dir.copy(id = -1))
+                                is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.addCloseDirective(dir.copy(id = -1))
+                                is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.addOption(dir.copy(id = -1))
+                            }
+                        }
+                    }
+                }
+
+                val bytes = doc.save()
+                saveDocumentBytes(bytes)
+                val newDirectives = doc.getDirectives()
+
+                _state.update {
+                    it.copy(
+                        directives = newDirectives,
+                        isSyncing = false,
+                        syncChanges = emptyList()
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to apply sync changes: ${e.message}") }
+            }
         }
     }
 

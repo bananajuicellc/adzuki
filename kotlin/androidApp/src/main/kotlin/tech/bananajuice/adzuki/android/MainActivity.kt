@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -51,6 +52,7 @@ import tech.bananajuice.adzuki.shared.automerge.*
 import tech.bananajuice.adzuki.shared.automerge.OptionDirective
 import tech.bananajuice.adzuki.shared.automerge.CloseDirective
 import tech.bananajuice.adzuki.shared.mvi.*
+import tech.bananajuice.adzuki.shared.mvi.DiffChange
 
 sealed class Screen {
     object SelectFolder : Screen()
@@ -550,6 +552,76 @@ fun OptionEditDialog(
     )
 }
 
+@Composable
+fun SyncChangesDialog(
+    changes: List<DiffChange>,
+    onToggle: (Int) -> Unit,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import Changes") },
+        text = {
+            if (changes.isEmpty()) {
+                Text("No differences found.", modifier = Modifier.fillMaxWidth().padding(16.dp))
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(changes) { index, change ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onToggle(index) }
+                        ) {
+                            Checkbox(
+                                checked = change.selected,
+                                onCheckedChange = { onToggle(index) }
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                when (change) {
+                                    is DiffChange.Added -> {
+                                        Text("Added", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                        Text(directiveSummary(change.directive))
+                                    }
+                                    is DiffChange.Removed -> {
+                                        Text("Removed", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                                        Text(directiveSummary(change.directive))
+                                    }
+                                    is DiffChange.Modified -> {
+                                        Text("Modified", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                                        Text("Old: ${directiveSummary(change.oldDirective)}")
+                                        Text("New: ${directiveSummary(change.newDirective)}")
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onApply) { Text("Apply Checked") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+fun directiveSummary(directive: Directive): String {
+    return when (directive) {
+        is AccountDirective -> "Account: ${directive.name} (${directive.date})"
+        is TransactionDirective -> "Transaction: ${directive.payee} (${directive.date})"
+        is CloseDirective -> "Close: ${directive.account} (${directive.date})"
+        is OptionDirective -> "Option: ${directive.name} = ${directive.value}"
+        else -> "Unknown Directive"
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEditDialog(
@@ -910,6 +982,24 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
+                            val importBeancountSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importUri ->
+                                if (importUri != null) {
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        try {
+                                            val text = context.contentResolver.openInputStream(importUri)?.bufferedReader()?.use { it.readText() }
+                                            if (text != null) {
+                                                val doc = importFromBeancount(text)
+                                                docViewModel.processIntent(DocumentIntent.StartImportSync(doc))
+                                            }
+                                        } catch (e: Exception) {
+                                            launch(Dispatchers.Main) {
+                                                Toast.makeText(context, "Failed to sync Beancount file: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             BackHandler {
                                 viewModel.processIntent(MainIntent.NavigateBack)
                             }
@@ -932,6 +1022,9 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                         actions = {
+                                            IconButton(onClick = { importBeancountSyncLauncher.launch(arrayOf("*/*")) }) {
+                                                Icon(Icons.Filled.FolderOpen, contentDescription = "Import Beancount for Sync")
+                                            }
                                             IconButton(onClick = { exportDocLauncher.launch("exported_journal.beancount") }) {
                                                 Icon(Icons.Filled.Share, contentDescription = "Export to Beancount")
                                             }
@@ -1101,6 +1194,14 @@ class MainActivity : ComponentActivity() {
                                     option = docState.optionBeingEdited,
                                     onSave = { docViewModel.processIntent(DocumentIntent.SaveOption(it)) },
                                     onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingOption) }
+                                )
+                            }
+                            if (docState.isSyncing) {
+                                SyncChangesDialog(
+                                    changes = docState.syncChanges,
+                                    onToggle = { docViewModel.processIntent(DocumentIntent.ToggleSyncChange(it)) },
+                                    onApply = { docViewModel.processIntent(DocumentIntent.ApplySyncChanges) },
+                                    onDismiss = { docViewModel.processIntent(DocumentIntent.CancelSync) }
                                 )
                             }
                         }
