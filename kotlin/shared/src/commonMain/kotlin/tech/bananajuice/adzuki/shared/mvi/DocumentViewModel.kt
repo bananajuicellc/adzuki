@@ -219,28 +219,31 @@ class DocumentViewModel(
 
                 val changesToApply = _state.value.syncChanges.filter { it.selected }
 
-                changesToApply.forEach { change ->
-                    when (change) {
-                        is DiffChange.Modified -> {
-                            when (val newDir = change.newDirective) {
-                                is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.updateTransaction(newDir.copy(id = change.oldDirective.id))
-                                is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.updateAccount(newDir.copy(id = change.oldDirective.id))
-                                is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.updateCloseDirective(newDir.copy(id = change.oldDirective.id))
-                                is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.updateOption(newDir.copy(id = change.oldDirective.id))
-                            }
-                        }
-                        is DiffChange.Removed -> {
-                            doc.deleteDirective(change.directive.id)
-                        }
-                        is DiffChange.Added -> {
-                            when (val dir = change.directive) {
-                                is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.addTransaction(dir.copy(id = -1))
-                                is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.addAccount(dir.copy(id = -1))
-                                is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.addCloseDirective(dir.copy(id = -1))
-                                is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.addOption(dir.copy(id = -1))
-                            }
-                        }
+                val modifications = changesToApply.filterIsInstance<DiffChange.Modified>()
+                val additions = changesToApply.filterIsInstance<DiffChange.Added>()
+                val removals = changesToApply.filterIsInstance<DiffChange.Removed>()
+                    .sortedByDescending { it.directive.id }
+
+                modifications.forEach { change ->
+                    when (val newDir = change.newDirective) {
+                        is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.updateTransaction(newDir.copy(id = change.oldDirective.id))
+                        is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.updateAccount(newDir.copy(id = change.oldDirective.id))
+                        is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.updateCloseDirective(newDir.copy(id = change.oldDirective.id))
+                        is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.updateOption(newDir.copy(id = change.oldDirective.id))
                     }
+                }
+
+                additions.forEach { change ->
+                    when (val dir = change.directive) {
+                        is tech.bananajuice.adzuki.shared.automerge.TransactionDirective -> doc.addTransaction(dir.copy(id = -1))
+                        is tech.bananajuice.adzuki.shared.automerge.AccountDirective -> doc.addAccount(dir.copy(id = -1))
+                        is tech.bananajuice.adzuki.shared.automerge.CloseDirective -> doc.addCloseDirective(dir.copy(id = -1))
+                        is tech.bananajuice.adzuki.shared.automerge.OptionDirective -> doc.addOption(dir.copy(id = -1))
+                    }
+                }
+
+                removals.forEach { change ->
+                    doc.deleteDirective(change.directive.id)
                 }
 
                 val bytes = doc.save()

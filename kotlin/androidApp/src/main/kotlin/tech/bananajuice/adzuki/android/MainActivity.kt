@@ -984,17 +984,17 @@ class MainActivity : ComponentActivity() {
 
                             val importBeancountSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importUri ->
                                 if (importUri != null) {
-                                    coroutineScope.launch(Dispatchers.IO) {
+                                    coroutineScope.launch {
                                         try {
-                                            val text = context.contentResolver.openInputStream(importUri)?.bufferedReader()?.use { it.readText() }
+                                            val text = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                                context.contentResolver.openInputStream(importUri)?.bufferedReader()?.use { it.readText() }
+                                            }
                                             if (text != null) {
-                                                val doc = importFromBeancount(text)
+                                                val doc = kotlinx.coroutines.withContext(Dispatchers.IO) { importFromBeancount(text) }
                                                 docViewModel.processIntent(DocumentIntent.StartImportSync(doc))
                                             }
                                         } catch (e: Exception) {
-                                            launch(Dispatchers.Main) {
-                                                Toast.makeText(context, "Failed to sync Beancount file: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            }
+                                            Toast.makeText(context, "Failed to sync Beancount file: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 }
