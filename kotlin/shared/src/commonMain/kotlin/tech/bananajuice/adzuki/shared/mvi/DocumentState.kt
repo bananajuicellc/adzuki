@@ -14,5 +14,7 @@ data class DocumentState(
     val isEditingOption: Boolean = false,
     val optionBeingEdited: OptionDirective? = null,
     val isLoading: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isSyncing: Boolean = false,
+    val syncChanges: List<tech.bananajuice.adzuki.shared.mvi.DiffChange> = emptyList()
 )

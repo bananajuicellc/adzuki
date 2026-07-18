@@ -21,4 +21,9 @@ sealed interface DocumentIntent {
     data class SaveOption(val option: OptionDirective) : DocumentIntent
     data class DeleteDirective(val id: Long) : DocumentIntent
     object DismissError : DocumentIntent
+
+    data class StartImportSync(val newDocument: AutomergeDocument) : DocumentIntent
+    data class ToggleSyncChange(val index: Int) : DocumentIntent
+    object ApplySyncChanges : DocumentIntent
+    object CancelSync : DocumentIntent
 }
