@@ -70,6 +70,7 @@ kotlin {
 
 dependencies {
     implementation(project(":kotlin:shared"))
+    implementation(project(":kotlin:profile-picker"))
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.compose.ui)

@@ -53,32 +53,9 @@ import tech.bananajuice.adzuki.shared.automerge.OptionDirective
 import tech.bananajuice.adzuki.shared.automerge.CloseDirective
 import tech.bananajuice.adzuki.shared.mvi.*
 
-import org.json.JSONObject
-
-data class Profile(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val name: String,
-    val folderUri: String
-) {
-    fun toJson(): String {
-        return JSONObject().apply {
-            put("id", id)
-            put("name", name)
-            put("folderUri", folderUri)
-        }.toString()
-    }
-
-    companion object {
-        fun fromJson(json: String): Profile {
-            val obj = JSONObject(json)
-            return Profile(
-                id = obj.getString("id"),
-                name = obj.getString("name"),
-                folderUri = obj.getString("folderUri")
-            )
-        }
-    }
-}
+import tech.bananajuice.shared.profilepicker.Profile
+import tech.bananajuice.shared.profilepicker.ProfilePickerScreen
+import tech.bananajuice.shared.profilepicker.ProfileEditorScreen
 
 sealed class Screen {
     object ProfilePicker : Screen()
@@ -110,15 +87,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(MainState())
     val state: StateFlow<MainState> = _state.asStateFlow()
 
-    private val prefs = application.getSharedPreferences("adzuki_prefs", Context.MODE_PRIVATE)
+    private val profileRepository = AndroidProfileRepository(application)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            val savedProfilesJson = prefs.getStringSet("profiles", emptySet()) ?: emptySet()
-            val profiles = savedProfilesJson.mapNotNull {
-                try { Profile.fromJson(it) } catch (e: Exception) { null }
-            }
-            val defaultProfileId = prefs.getString("default_profile_id", null)
+            val profiles = profileRepository.getProfiles()
+            val defaultProfileId = profileRepository.getDefaultProfileId()
 
             val initialScreen = if (profiles.isEmpty()) {
                 Screen.ProfileEditor(null)
@@ -147,16 +121,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun persistState(state: MainState) {
+    private fun loadProfiles() {
         viewModelScope.launch(Dispatchers.IO) {
-            val editor = prefs.edit()
-            editor.putStringSet("profiles", state.profiles.map { it.toJson() }.toSet())
-            if (state.defaultProfileId == null) {
-                editor.remove("default_profile_id")
-            } else {
-                editor.putString("default_profile_id", state.defaultProfileId)
-            }
-            editor.apply()
+            val profiles = profileRepository.getProfiles()
+            val defaultId = profileRepository.getDefaultProfileId()
+            _state.update { it.copy(profiles = profiles, defaultProfileId = defaultId) }
         }
     }
 
@@ -169,19 +138,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(currentScreen = Screen.ProfileEditor(intent.profileId)) }
             }
             is MainIntent.SaveProfile -> {
-                _state.update { state ->
-                    val newProfiles = state.profiles.filter { it.id != intent.profile.id } + intent.profile
-                    val newDefaultId = if (intent.isDefault) intent.profile.id else if (state.defaultProfileId == intent.profile.id) null else state.defaultProfileId
-
-                    state.copy(
-                        profiles = newProfiles,
-                        defaultProfileId = newDefaultId,
-                        activeProfileId = intent.profile.id,
-                        currentScreen = Screen.FileList(intent.profile.folderUri),
-                        openFolderUri = intent.profile.folderUri
-                    )
+                viewModelScope.launch(Dispatchers.IO) {
+                    profileRepository.saveProfile(intent.profile, intent.isDefault)
+                    val newProfiles = profileRepository.getProfiles()
+                    val newDefaultId = profileRepository.getDefaultProfileId()
+                    _state.update { state ->
+                        state.copy(
+                            profiles = newProfiles,
+                            defaultProfileId = newDefaultId,
+                            activeProfileId = intent.profile.id,
+                            currentScreen = Screen.FileList(intent.profile.folderUri),
+                            openFolderUri = intent.profile.folderUri
+                        )
+                    }
                 }
-                persistState(_state.value)
             }
             is MainIntent.SelectProfile -> {
                 _state.update { state ->
@@ -196,9 +166,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             is MainIntent.DeleteProfile -> {
-                _state.update { state ->
-                    val newProfiles = state.profiles.filter { it.id != intent.profileId }
-                    val newDefaultId = if (state.defaultProfileId == intent.profileId) null else state.defaultProfileId
+                viewModelScope.launch(Dispatchers.IO) {
+                    profileRepository.deleteProfile(intent.profileId)
+                    val newProfiles = profileRepository.getProfiles()
+                    val newDefaultId = profileRepository.getDefaultProfileId()
 
                     val nextScreen = if (newProfiles.isEmpty()) {
                         Screen.ProfileEditor(null)
@@ -206,15 +177,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         Screen.ProfilePicker
                     }
 
-                    state.copy(
-                        profiles = newProfiles,
-                        defaultProfileId = newDefaultId,
-                        activeProfileId = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.id else null,
-                        currentScreen = nextScreen,
-                        openFolderUri = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.folderUri else null
-                    )
+                    _state.update { state ->
+                        state.copy(
+                            profiles = newProfiles,
+                            defaultProfileId = newDefaultId,
+                            activeProfileId = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.id else null,
+                            currentScreen = nextScreen,
+                            openFolderUri = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.folderUri else null
+                        )
+                    }
                 }
-                persistState(_state.value)
             }
             is MainIntent.OpenFolder -> {
                 _state.update {
@@ -242,140 +214,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ProfilePickerScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Select Profile") }) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onIntent(MainIntent.StartProfileEditor(null)) }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Profile")
-            }
-        }
-    ) { padding ->
-        val colors = listOf(
-            MaterialTheme.colorScheme.primary,
-            MaterialTheme.colorScheme.secondary,
-            MaterialTheme.colorScheme.tertiary,
-            MaterialTheme.colorScheme.error
-        )
-        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
-            items(state.profiles, key = { it.id }) { profile ->
-                val firstLetter = profile.name.firstOrNull()?.uppercase() ?: "?"
-                val colorIndex = kotlin.math.abs(profile.name.hashCode()) % colors.size
-                val circleColor = colors[colorIndex]
-
-                ListItem(
-                    headlineContent = { Text(profile.name) },
-                    supportingContent = { Text(if (profile.id == state.defaultProfileId) "Default" else "") },
-                    leadingContent = {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(color = circleColor, shape = androidx.compose.foundation.shape.CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = firstLetter,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    },
-                    modifier = Modifier.clickable { onIntent(MainIntent.SelectProfile(profile.id)) },
-                    trailingContent = {
-                        IconButton(onClick = { onIntent(MainIntent.StartProfileEditor(profile.id)) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit Profile")
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ProfileEditorScreen(state: MainState, profileId: String?, onIntent: (MainIntent) -> Unit) {
-    val existingProfile = state.profiles.find { it.id == profileId }
-    var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
-    var folderUri by remember(existingProfile) { mutableStateOf(existingProfile?.folderUri) }
-    var isDefault by remember(existingProfile, state.defaultProfileId) { mutableStateOf(existingProfile?.id != null && existingProfile.id == state.defaultProfileId) }
-    val context = LocalContext.current
-
-    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            try {
-                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-                folderUri = uri.toString()
-                if (name.isBlank()) {
-                    val documentFile = DocumentFile.fromTreeUri(context, uri)
-                    name = documentFile?.name ?: "New Profile"
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to take permission", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (profileId == null) "New Profile" else "Edit Profile") },
-                navigationIcon = {
-                    IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (profileId != null) {
-                        IconButton(onClick = { onIntent(MainIntent.DeleteProfile(profileId)) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete")
-                        }
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(modifier = Modifier.padding(padding).padding(16.dp)) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Profile Name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { folderLauncher.launch(null) }) {
-                Text(if (folderUri == null) "Select Folder" else "Change Folder")
-            }
-            folderUri?.let { uri ->
-                val folderNameToShow = remember(uri) {
-                    Uri.parse(uri).lastPathSegment ?: "Folder"
-                }
-                Text("Selected: $folderNameToShow", style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
-                Text("Set as default profile")
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && folderUri != null) {
-                        val profile = Profile(id = profileId ?: java.util.UUID.randomUUID().toString(), name = name, folderUri = folderUri!!)
-                        onIntent(MainIntent.SaveProfile(profile, isDefault))
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank() && folderUri != null
-            ) {
-                Text("Save")
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1049,14 +887,56 @@ class MainActivity : ComponentActivity() {
 
                     when (val currentScreen = state.currentScreen) {
                         is Screen.ProfilePicker -> ProfilePickerScreen(
-                            state = state,
-                            onIntent = viewModel::processIntent
+                            profiles = state.profiles,
+                            defaultProfileId = state.defaultProfileId,
+                            onAddProfile = { viewModel.processIntent(MainIntent.StartProfileEditor(null)) },
+                            onSelectProfile = { viewModel.processIntent(MainIntent.SelectProfile(it)) },
+                            onEditProfile = { viewModel.processIntent(MainIntent.StartProfileEditor(it)) }
                         )
-                        is Screen.ProfileEditor -> ProfileEditorScreen(
-                            state = state,
-                            profileId = currentScreen.profileId,
-                            onIntent = viewModel::processIntent
-                        )
+                        is Screen.ProfileEditor -> {
+                            val context = LocalContext.current
+                            val existingProfile = state.profiles.find { it.id == currentScreen.profileId }
+                            var folderUriStr by remember(existingProfile) { mutableStateOf(existingProfile?.folderUri) }
+                            var folderNameToShow by remember(existingProfile) { mutableStateOf<String?>(null) }
+                            var defaultNameFromFolder by remember { mutableStateOf<String?>(null) }
+
+                            LaunchedEffect(folderUriStr) {
+                                if (folderUriStr != null) {
+                                    val uri = Uri.parse(folderUriStr)
+                                    val documentFile = DocumentFile.fromTreeUri(context, uri)
+                                    folderNameToShow = documentFile?.name ?: Uri.parse(folderUriStr).lastPathSegment
+                                    defaultNameFromFolder = documentFile?.name
+                                }
+                            }
+
+                            val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                                if (uri != null) {
+                                    val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    try {
+                                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                                        folderUriStr = uri.toString()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Failed to take permission", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+
+                            ProfileEditorScreen(
+                                profileId = currentScreen.profileId,
+                                existingProfile = existingProfile,
+                                isDefaultInitial = existingProfile?.id != null && existingProfile.id == state.defaultProfileId,
+                                onNavigateBack = { viewModel.processIntent(MainIntent.NavigateBack) },
+                                onDeleteProfile = { viewModel.processIntent(MainIntent.DeleteProfile(it)) },
+                                onSelectFolder = { folderLauncher.launch(null) },
+                                folderUriStr = folderUriStr,
+                                folderNameToShow = folderNameToShow,
+                                onSaveProfile = { id, name, uriStr, isDefault ->
+                                    val actualName = if (name.isBlank() && defaultNameFromFolder != null) defaultNameFromFolder!! else name
+                                    val profile = Profile(id = id, name = actualName, folderUri = uriStr)
+                                    viewModel.processIntent(MainIntent.SaveProfile(profile, isDefault))
+                                }
+                            )
+                        }
                         is Screen.FileList -> FileListScreen(
                             state = state,
                             onIntent = viewModel::processIntent

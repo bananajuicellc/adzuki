@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "adzuki"
-include(":kotlin:shared", ":kotlin:androidApp")
+include(":kotlin:shared", ":kotlin:androidApp", ":kotlin:profile-picker")
