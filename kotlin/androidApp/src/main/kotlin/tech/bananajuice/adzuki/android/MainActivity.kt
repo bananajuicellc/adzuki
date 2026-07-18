@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,24 +53,56 @@ import tech.bananajuice.adzuki.shared.automerge.OptionDirective
 import tech.bananajuice.adzuki.shared.automerge.CloseDirective
 import tech.bananajuice.adzuki.shared.mvi.*
 
+import org.json.JSONObject
+
+data class Profile(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val folderUri: String
+) {
+    fun toJson(): String {
+        return JSONObject().apply {
+            put("id", id)
+            put("name", name)
+            put("folderUri", folderUri)
+        }.toString()
+    }
+
+    companion object {
+        fun fromJson(json: String): Profile {
+            val obj = JSONObject(json)
+            return Profile(
+                id = obj.getString("id"),
+                name = obj.getString("name"),
+                folderUri = obj.getString("folderUri")
+            )
+        }
+    }
+}
+
 sealed class Screen {
-    object SelectFolder : Screen()
-    object JournalList : Screen()
+    object ProfilePicker : Screen()
+    data class ProfileEditor(val profileId: String?) : Screen()
     data class FileList(val folderUri: String) : Screen()
     data class Editor(val fileUri: String) : Screen()
 }
 
 data class MainState(
-    val currentScreen: Screen = Screen.SelectFolder,
-    val openFolderUri: String? = null,
-    val rootFolders: List<String> = emptyList()
+    val currentScreen: Screen = Screen.ProfilePicker,
+    val profiles: List<Profile> = emptyList(),
+    val defaultProfileId: String? = null,
+    val activeProfileId: String? = null,
+    val openFolderUri: String? = null
 )
 
 sealed class MainIntent {
+    object OpenProfilePicker : MainIntent()
+    data class StartProfileEditor(val profileId: String?) : MainIntent()
+    data class SaveProfile(val profile: Profile, val isDefault: Boolean) : MainIntent()
+    data class SelectProfile(val profileId: String) : MainIntent()
+    data class DeleteProfile(val profileId: String) : MainIntent()
     data class OpenFolder(val uri: String) : MainIntent()
     object NavigateBack : MainIntent()
-    data class SelectRootFolder(val uri: String) : MainIntent()
-    data class RemoveRootFolder(val uri: String) : MainIntent()
     data class OpenEditor(val uri: String) : MainIntent()
 }
 
@@ -81,42 +114,107 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            val savedFolders = prefs.getStringSet("root_folders", emptySet())?.toList() ?: emptyList()
+            val savedProfilesJson = prefs.getStringSet("profiles", emptySet()) ?: emptySet()
+            val profiles = savedProfilesJson.mapNotNull {
+                try { Profile.fromJson(it) } catch (e: Exception) { null }
+            }
+            val defaultProfileId = prefs.getString("default_profile_id", null)
+
+            val initialScreen = if (profiles.isEmpty()) {
+                Screen.ProfileEditor(null)
+            } else if (profiles.size == 1) {
+                Screen.FileList(profiles.first().folderUri)
+            } else if (defaultProfileId != null && profiles.any { it.id == defaultProfileId }) {
+                val profile = profiles.first { it.id == defaultProfileId }
+                Screen.FileList(profile.folderUri)
+            } else {
+                Screen.ProfilePicker
+            }
+
+            val activeId = if (initialScreen is Screen.FileList) {
+                if (profiles.size == 1) profiles.first().id else defaultProfileId
+            } else null
+
             _state.update {
                 it.copy(
-                    rootFolders = savedFolders,
-                    currentScreen = if (savedFolders.isNotEmpty()) Screen.JournalList else Screen.SelectFolder
+                    profiles = profiles,
+                    defaultProfileId = defaultProfileId,
+                    activeProfileId = activeId,
+                    currentScreen = initialScreen,
+                    openFolderUri = if (initialScreen is Screen.FileList) initialScreen.folderUri else null
                 )
             }
         }
     }
 
+    private fun persistState(state: MainState) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val editor = prefs.edit()
+            editor.putStringSet("profiles", state.profiles.map { it.toJson() }.toSet())
+            if (state.defaultProfileId == null) {
+                editor.remove("default_profile_id")
+            } else {
+                editor.putString("default_profile_id", state.defaultProfileId)
+            }
+            editor.apply()
+        }
+    }
+
     fun processIntent(intent: MainIntent) {
         when (intent) {
-            is MainIntent.SelectRootFolder -> {
-                _state.update {
-                    val folders = it.rootFolders.toMutableList()
-                    if (!folders.contains(intent.uri)) {
-                        folders.add(intent.uri)
-                    }
-                    it.copy(rootFolders = folders, currentScreen = Screen.JournalList)
-                }
-                viewModelScope.launch(Dispatchers.IO) {
-                    prefs.edit().putStringSet("root_folders", _state.value.rootFolders.toSet()).apply()
-                }
+            is MainIntent.OpenProfilePicker -> {
+                _state.update { it.copy(currentScreen = Screen.ProfilePicker) }
             }
-            is MainIntent.RemoveRootFolder -> {
-                _state.update {
-                    val folders = it.rootFolders.toMutableList()
-                    folders.remove(intent.uri)
-                    it.copy(
-                        rootFolders = folders,
-                        currentScreen = if (folders.isEmpty()) Screen.SelectFolder else it.currentScreen
+            is MainIntent.StartProfileEditor -> {
+                _state.update { it.copy(currentScreen = Screen.ProfileEditor(intent.profileId)) }
+            }
+            is MainIntent.SaveProfile -> {
+                _state.update { state ->
+                    val newProfiles = state.profiles.filter { it.id != intent.profile.id } + intent.profile
+                    val newDefaultId = if (intent.isDefault) intent.profile.id else if (state.defaultProfileId == intent.profile.id) null else state.defaultProfileId
+
+                    state.copy(
+                        profiles = newProfiles,
+                        defaultProfileId = newDefaultId,
+                        activeProfileId = intent.profile.id,
+                        currentScreen = Screen.FileList(intent.profile.folderUri),
+                        openFolderUri = intent.profile.folderUri
                     )
                 }
-                viewModelScope.launch(Dispatchers.IO) {
-                    prefs.edit().putStringSet("root_folders", _state.value.rootFolders.toSet()).apply()
+                persistState(_state.value)
+            }
+            is MainIntent.SelectProfile -> {
+                _state.update { state ->
+                    val profile = state.profiles.find { it.id == intent.profileId }
+                    if (profile != null) {
+                        state.copy(
+                            activeProfileId = profile.id,
+                            currentScreen = Screen.FileList(profile.folderUri),
+                            openFolderUri = profile.folderUri
+                        )
+                    } else state
                 }
+            }
+            is MainIntent.DeleteProfile -> {
+                _state.update { state ->
+                    val newProfiles = state.profiles.filter { it.id != intent.profileId }
+                    val newDefaultId = if (state.defaultProfileId == intent.profileId) null else state.defaultProfileId
+
+                    val nextScreen = if (newProfiles.isEmpty()) {
+                        Screen.ProfileEditor(null)
+                    } else {
+                        Screen.ProfilePicker
+                    }
+
+                    state.copy(
+                        profiles = newProfiles,
+                        defaultProfileId = newDefaultId,
+                        activeProfileId = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.id else null,
+                        currentScreen = nextScreen,
+                        openFolderUri = if (nextScreen is Screen.FileList) newProfiles.firstOrNull()?.folderUri else null
+                    )
+                }
+                persistState(_state.value)
             }
             is MainIntent.OpenFolder -> {
                 _state.update {
@@ -132,8 +230,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     when (it.currentScreen) {
                         is Screen.Editor -> Screen.FileList(it.openFolderUri!!)
-                        is Screen.FileList -> Screen.JournalList
-                        else -> Screen.SelectFolder
+                        is Screen.FileList -> Screen.ProfilePicker
+                        is Screen.ProfileEditor -> if (it.profiles.isEmpty()) it.currentScreen else Screen.ProfilePicker
+                        else -> Screen.ProfilePicker
                     }.let { newScreen ->
                         it.copy(currentScreen = newScreen)
                     }
@@ -143,38 +242,175 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SelectFolderScreen(onIntent: (MainIntent) -> Unit) {
-    val context = LocalContext.current
-    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-            onIntent(MainIntent.SelectRootFolder(uri.toString()))
+fun ProfilePickerScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Select Profile") }) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { onIntent(MainIntent.StartProfileEditor(null)) }) {
+                Icon(Icons.Filled.Add, contentDescription = "Add Profile")
+            }
         }
-    }
+    ) { padding ->
+        val colors = listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.secondary,
+            MaterialTheme.colorScheme.tertiary,
+            MaterialTheme.colorScheme.error
+        )
+        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
+            items(state.profiles, key = { it.id }) { profile ->
+                val firstLetter = profile.name.firstOrNull()?.uppercase() ?: "?"
+                val colorIndex = kotlin.math.abs(profile.name.hashCode()) % colors.size
+                val circleColor = colors[colorIndex]
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Button(onClick = { folderLauncher.launch(null) }) {
-            Text("Select Journal Folder")
+                ListItem(
+                    headlineContent = { Text(profile.name) },
+                    supportingContent = { Text(if (profile.id == state.defaultProfileId) "Default" else "") },
+                    leadingContent = {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(color = circleColor, shape = androidx.compose.foundation.shape.CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = firstLetter,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    modifier = Modifier.clickable { onIntent(MainIntent.SelectProfile(profile.id)) },
+                    trailingContent = {
+                        IconButton(onClick = { onIntent(MainIntent.StartProfileEditor(profile.id)) }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit Profile")
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
+fun ProfileEditorScreen(state: MainState, profileId: String?, onIntent: (MainIntent) -> Unit) {
+    val existingProfile = state.profiles.find { it.id == profileId }
+    var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
+    var folderUri by remember(existingProfile) { mutableStateOf(existingProfile?.folderUri) }
+    var isDefault by remember(existingProfile, state.defaultProfileId) { mutableStateOf(existingProfile?.id != null && existingProfile.id == state.defaultProfileId) }
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-            onIntent(MainIntent.SelectRootFolder(uri.toString()))
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                folderUri = uri.toString()
+                if (name.isBlank()) {
+                    val documentFile = DocumentFile.fromTreeUri(context, uri)
+                    name = documentFile?.name ?: "New Profile"
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to take permission", Toast.LENGTH_SHORT).show()
+            }
         }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (profileId == null) "New Profile" else "Edit Profile") },
+                navigationIcon = {
+                    IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (profileId != null) {
+                        IconButton(onClick = { onIntent(MainIntent.DeleteProfile(profileId)) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Profile Name") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { folderLauncher.launch(null) }) {
+                Text(if (folderUri == null) "Select Folder" else "Change Folder")
+            }
+            folderUri?.let { uri ->
+                val folderNameToShow = remember(uri) {
+                    Uri.parse(uri).lastPathSegment ?: "Folder"
+                }
+                Text("Selected: $folderNameToShow", style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
+                Text("Set as default profile")
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                onClick = {
+                    if (name.isNotBlank() && folderUri != null) {
+                        val profile = Profile(id = profileId ?: java.util.UUID.randomUUID().toString(), name = name, folderUri = folderUri!!)
+                        onIntent(MainIntent.SaveProfile(profile, isDefault))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = name.isNotBlank() && folderUri != null
+            ) {
+                Text("Save")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
+    val context = LocalContext.current
+    val activeProfile = state.profiles.find { it.id == state.activeProfileId }
+    val folderUriStr = activeProfile?.folderUri ?: state.openFolderUri
+
+    val folderUri = remember(folderUriStr) { folderUriStr?.let { Uri.parse(it) } }
+    val folderFile = remember(folderUri) {
+        folderUri?.let { DocumentFile.fromTreeUri(context, it) }
+    }
+    var files by remember(folderFile) { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var folderName by remember(folderFile) { mutableStateOf<String?>("Loading...") }
+
+    LaunchedEffect(folderFile) {
+        if (folderFile != null) {
+            try {
+                val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    folderFile.name ?: "Unknown Folder"
+                }
+                folderName = name
+                val listedFiles = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    folderFile.listFiles().filter { it.isFile && it.name?.endsWith(".adzuki") == true }.toList()
+                }
+                files = listedFiles
+            } catch (e: SecurityException) {
+                // If permission is lost, navigate back to profile picker
+                onIntent(MainIntent.OpenProfilePicker)
+            }
+        }
+    }
+
+    BackHandler {
+        onIntent(MainIntent.OpenProfilePicker)
     }
 
     val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -183,6 +419,7 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
                 val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 context.contentResolver.takePersistableUriPermission(uri, takeFlags)
             } catch (e: Exception) {
+                // Ignore
             }
             onIntent(MainIntent.OpenEditor(uri.toString()))
         }
@@ -201,7 +438,7 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
                 try {
                     context.contentResolver.takePersistableUriPermission(uri, takeFlags)
                 } catch (e: Exception) {
-                    // Ignore if persistable permission cannot be taken for a newly created document
+                    // Ignore
                 }
                 onIntent(MainIntent.OpenEditor(uri.toString()))
             } catch (e: Exception) {
@@ -226,90 +463,35 @@ fun JournalListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Journals") }) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { launcher.launch(null) }) {
-                Icon(Icons.Filled.FolderOpen, contentDescription = "Open Folder")
-            }
-        }
-    ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
-                    Text("New Journal")
-                }
-                Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
-                    Text("Import Beancount File")
-                }
-            }
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(state.rootFolders) { folderUriStr ->
-                    val folderUri = Uri.parse(folderUriStr)
-                    var folderName by remember { mutableStateOf<String?>("Loading...") }
-
-                    LaunchedEffect(folderUri) {
-                        try {
-                            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                val documentFile = DocumentFile.fromTreeUri(context, folderUri)
-                                documentFile?.name ?: "Unknown Folder"
-                            }
-                            folderName = name
-                        } catch (e: SecurityException) {
-                            onIntent(MainIntent.RemoveRootFolder(folderUriStr))
-                        }
-                    }
-
-                    ListItem(
-                        headlineContent = { Text(folderName ?: "Unknown Folder") },
-                        modifier = Modifier.clickable { onIntent(MainIntent.OpenFolder(folderUriStr)) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
-    val context = LocalContext.current
-    val folderUriStr = (state.currentScreen as Screen.FileList).folderUri
-    val folderUri = Uri.parse(folderUriStr)
-    var folderName by remember { mutableStateOf<String?>("Loading...") }
-    var files by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
-    var folderFile by remember { mutableStateOf<DocumentFile?>(null) }
-
-    LaunchedEffect(folderUri) {
-        try {
-            val (file, name, filteredFiles) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val file = DocumentFile.fromTreeUri(context, folderUri)
-                val name = file?.name ?: "Files"
-                val filteredFiles = file?.listFiles()?.filter { it.isFile && it.name?.endsWith(".adzuki") == true } ?: emptyList()
-                Triple(file, name, filteredFiles)
-            }
-            folderFile = file
-            folderName = name
-            files = filteredFiles
-        } catch (e: SecurityException) {
-            onIntent(MainIntent.RemoveRootFolder(folderUriStr))
-            onIntent(MainIntent.NavigateBack)
-        }
-    }
-
-    BackHandler {
-        onIntent(MainIntent.NavigateBack)
-    }
-
-    Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(folderName ?: "Files") },
                 navigationIcon = {
-                    IconButton(onClick = { onIntent(MainIntent.NavigateBack) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    val profileToUse = activeProfile ?: state.profiles.firstOrNull()
+                    val firstLetter = profileToUse?.name?.firstOrNull()?.uppercase() ?: "?"
+                    val colors = listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.secondary,
+                        MaterialTheme.colorScheme.tertiary,
+                        MaterialTheme.colorScheme.error
+                    )
+                    val colorIndex = kotlin.math.abs(profileToUse?.name?.hashCode() ?: 0) % colors.size
+                    val circleColor = colors[colorIndex]
+
+                    IconButton(onClick = { onIntent(MainIntent.OpenProfilePicker) }) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(color = circleColor, shape = androidx.compose.foundation.shape.CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = firstLetter,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             )
@@ -325,12 +507,25 @@ fun FileListScreen(state: MainState, onIntent: (MainIntent) -> Unit) {
             }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
-            items(files) { file ->
-                ListItem(
-                    headlineContent = { Text(file.name ?: "Unknown") },
-                    modifier = Modifier.clickable { onIntent(MainIntent.OpenEditor(file.uri.toString())) }
-                )
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                Button(onClick = { createDocLauncher.launch("new_journal.adzuki") }) {
+                    Text("New Journal")
+                }
+                Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
+                    Text("Import Beancount File")
+                }
+            }
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(files) { file ->
+                    ListItem(
+                        headlineContent = { Text(file.name ?: "Unknown") },
+                        modifier = Modifier.clickable { onIntent(MainIntent.OpenEditor(file.uri.toString())) }
+                    )
+                }
             }
         }
     }
@@ -853,11 +1048,13 @@ class MainActivity : ComponentActivity() {
                     val state by viewModel.state.collectAsState()
 
                     when (val currentScreen = state.currentScreen) {
-                        is Screen.SelectFolder -> SelectFolderScreen(
+                        is Screen.ProfilePicker -> ProfilePickerScreen(
+                            state = state,
                             onIntent = viewModel::processIntent
                         )
-                        is Screen.JournalList -> JournalListScreen(
+                        is Screen.ProfileEditor -> ProfileEditorScreen(
                             state = state,
+                            profileId = currentScreen.profileId,
                             onIntent = viewModel::processIntent
                         )
                         is Screen.FileList -> FileListScreen(
