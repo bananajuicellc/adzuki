@@ -11,6 +11,36 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
     private val prefs: SharedPreferences = context.getSharedPreferences("adzuki_prefs", Context.MODE_PRIVATE)
 
     override suspend fun getProfiles(): List<Profile> = withContext(Dispatchers.IO) {
+        val jsonStr = prefs.getString("profiles_list", null)
+        if (jsonStr != null) {
+            try {
+                val array = org.json.JSONArray(jsonStr)
+                val list = mutableListOf<Profile>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val customSettingsObj = obj.optJSONObject("customSettings")
+                    val customSettingsMap = mutableMapOf<String, String>()
+                    customSettingsObj?.keys()?.forEach { key ->
+                        val value = customSettingsObj.optString(key, null)
+                        if (value != null) {
+                            customSettingsMap[key] = value
+                        }
+                    }
+                    list.add(
+                        Profile(
+                            id = obj.getString("id"),
+                            name = obj.getString("name"),
+                            folderUri = obj.getString("folderUri"),
+                            customSettings = customSettingsMap
+                        )
+                    )
+                }
+                return@withContext list
+            } catch (e: Exception) {
+                // Fallback to old format if parsing fails
+            }
+        }
+
         val savedProfilesJson = prefs.getStringSet("profiles", emptySet()) ?: emptySet()
         savedProfilesJson.mapNotNull { jsonString ->
             try {
@@ -18,7 +48,10 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
                 val customSettingsObj = obj.optJSONObject("customSettings")
                 val customSettingsMap = mutableMapOf<String, String>()
                 customSettingsObj?.keys()?.forEach { key ->
-                    customSettingsMap[key] = customSettingsObj.getString(key)
+                    val value = customSettingsObj.optString(key, null)
+                    if (value != null) {
+                        customSettingsMap[key] = value
+                    }
                 }
                 Profile(
                     id = obj.getString("id"),
@@ -44,8 +77,9 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
         }
 
         val editor = prefs.edit()
-        editor.putStringSet("profiles", profiles.map { p ->
-            org.json.JSONObject().apply {
+        val jsonArray = org.json.JSONArray()
+        profiles.forEach { p ->
+            val obj = org.json.JSONObject().apply {
                 put("id", p.id)
                 put("name", p.name)
                 put("folderUri", p.folderUri)
@@ -54,8 +88,11 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
                     customObj.put(key, value)
                 }
                 put("customSettings", customObj)
-            }.toString()
-        }.toSet())
+            }
+            jsonArray.put(obj)
+        }
+        editor.putString("profiles_list", jsonArray.toString())
+        editor.remove("profiles")
 
         if (isDefault) {
             editor.putString("default_profile_id", profile.id)
@@ -69,8 +106,9 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
     override suspend fun deleteProfile(profileId: String) = withContext(Dispatchers.IO) {
         val profiles = getProfiles().filter { it.id != profileId }
         val editor = prefs.edit()
-        editor.putStringSet("profiles", profiles.map { p ->
-             org.json.JSONObject().apply {
+        val jsonArray = org.json.JSONArray()
+        profiles.forEach { p ->
+            val obj = org.json.JSONObject().apply {
                 put("id", p.id)
                 put("name", p.name)
                 put("folderUri", p.folderUri)
@@ -79,8 +117,11 @@ class AndroidProfileRepository(context: Context) : ProfileRepository<Profile> {
                     customObj.put(key, value)
                 }
                 put("customSettings", customObj)
-            }.toString()
-        }.toSet())
+            }
+            jsonArray.put(obj)
+        }
+        editor.putString("profiles_list", jsonArray.toString())
+        editor.remove("profiles")
 
         if (getDefaultProfileId() == profileId) {
             editor.remove("default_profile_id")
