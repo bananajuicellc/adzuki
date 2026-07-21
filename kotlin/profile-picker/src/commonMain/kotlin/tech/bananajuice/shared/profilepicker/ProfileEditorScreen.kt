@@ -68,7 +68,7 @@ fun <T : BaseProfile> ProfileEditorScreen(
             Button(
                 onClick = {
                     if (name.isNotBlank() && folderUriStr != null) {
-                        val idToSave = profileId ?: ("uuid-" + kotlin.random.Random.nextInt().toString())
+                        val idToSave = profileId ?: generateUuid()
                         onSaveProfile(idToSave, name, folderUriStr, isDefault)
                     }
                 },
