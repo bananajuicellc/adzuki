@@ -46,19 +46,20 @@ fun <T : BaseProfile> ProfileEditorScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Profile Name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = onSelectFolder) {
                 Text(if (folderUriStr == null) "Select Folder" else "Change Folder")
             }
             folderUriStr?.let {
                 Text("Selected: ${folderNameToShow ?: "Folder"}", style = MaterialTheme.typography.bodySmall)
             }
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Profile Name") },
+                placeholder = { Text(folderNameToShow ?: "Profile Name") },
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(modifier = Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
@@ -67,12 +68,12 @@ fun <T : BaseProfile> ProfileEditorScreen(
             Spacer(modifier = Modifier.weight(1f))
             Button(
                 onClick = {
-                    if (name.isNotBlank() && folderUriStr != null) {
+                    if (folderUriStr != null) {
                         onSaveProfile(profileId, name, folderUriStr, isDefault)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank() && folderUriStr != null
+                enabled = folderUriStr != null
             ) {
                 Text("Save")
             }
