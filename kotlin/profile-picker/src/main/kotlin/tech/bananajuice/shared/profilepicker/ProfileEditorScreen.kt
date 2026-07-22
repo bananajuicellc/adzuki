@@ -69,7 +69,8 @@ fun <T : BaseProfile> ProfileEditorScreen(
             Button(
                 onClick = {
                     if (folderUriStr != null) {
-                        onSaveProfile(profileId, name, folderUriStr, isDefault)
+                        val resolvedName = name.ifBlank { folderNameToShow ?: "Profile" }
+                        onSaveProfile(profileId, resolvedName, folderUriStr, isDefault)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
