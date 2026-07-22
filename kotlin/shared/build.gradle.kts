@@ -1,44 +1,18 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    kotlin("multiplatform")
     id("com.android.library")
-    id("org.jetbrains.compose")
+    kotlin("android")
+    id("com.google.devtools.ksp")
     kotlin("plugin.compose")
-}
-
-kotlin {
-    androidTarget {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
-        }
-    }
-
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(libs.automerge)
-                implementation(compose.runtime)
-                implementation("org.jetbrains.compose.foundation:foundation:1.10.2")
-                implementation("org.jetbrains.compose.material3:material3:1.9.0-beta03")
-                implementation("org.jetbrains.compose.ui:ui:1.10.2")
-                implementation("org.jetbrains.compose.components:components-resources:1.10.2")
-                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.2")
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
-        }
-        val androidMain by getting
-    }
+    id("dev.gobley.cargo") version "0.3.7"
+    id("dev.gobley.uniffi") version "0.3.7"
+    kotlin("plugin.atomicfu") version "2.1.0"
 }
 
 android {
     namespace = "tech.bananajuice.adzuki.shared"
     compileSdk = 36
-    ndkVersion = "30.0.14904198"
 
     defaultConfig {
         minSdk = 26
@@ -46,5 +20,39 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+    }
+    buildFeatures {
+        compose = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
+    }
+}
+
+dependencies {
+    implementation(project(":kotlin:profile-picker"))
+    implementation(libs.automerge)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.documentfile)
+    testImplementation(libs.junit)
+    testImplementation(kotlin("test"))
+}
+
+cargo {
+    packageDirectory = layout.projectDirectory.dir("../../rust/adzuki")
+}
+
+uniffi {
+    generateFromLibrary {
+        namespace = "adzuki"
+        packageName = "uniffi.adzuki"
     }
 }
