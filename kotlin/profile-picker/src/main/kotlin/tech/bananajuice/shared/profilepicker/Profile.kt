@@ -8,7 +8,7 @@ interface BaseProfile {
 }
 
 data class Profile(
-    override val id: String = "uuid-" + kotlin.random.Random.nextInt().toString(),
+    override val id: String = java.util.UUID.randomUUID().toString(),
     override val name: String,
     override val folderUri: String,
     override val customSettings: Map<String, String> = emptyMap()

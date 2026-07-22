@@ -44,26 +44,37 @@ fun FileListScreen(
     val folderUriStr = activeProfile?.folderUri ?: openFolderUri
 
     val folderUri = remember(folderUriStr) { folderUriStr?.let { Uri.parse(it) } }
-    val folderFile = remember(folderUri) {
-        folderUri?.let { DocumentFile.fromTreeUri(context, it) }
-    }
-    var files by remember(folderFile) { mutableStateOf<List<DocumentFile>>(emptyList()) }
-    var folderName by remember(folderFile) { mutableStateOf<String?>("Loading...") }
+    var files by remember(folderUri) { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var folderName by remember(folderUri) { mutableStateOf<String?>("Loading...") }
+    var folderFileState by remember(folderUri) { mutableStateOf<DocumentFile?>(null) }
 
-    LaunchedEffect(folderFile) {
-        if (folderFile != null) {
+    LaunchedEffect(folderUri) {
+        if (folderUri != null) {
             try {
-                val name = withContext(Dispatchers.IO) {
-                    folderFile.name ?: "Unknown Folder"
+                val result = withContext(Dispatchers.IO) {
+                    val folderFile = DocumentFile.fromTreeUri(context, folderUri)
+                    if (folderFile != null) {
+                        val name = folderFile.name ?: "Unknown Folder"
+                        val listedFiles = folderFile.listFiles()
+                            .filter { it.isFile && it.name?.endsWith(".adzuki") == true }
+                            .toList()
+                        Triple(folderFile, name, listedFiles)
+                    } else {
+                        null
+                    }
                 }
-                folderName = name
-                val listedFiles = withContext(Dispatchers.IO) {
-                    folderFile.listFiles().filter { it.isFile && it.name?.endsWith(".adzuki") == true }.toList()
+                if (result != null) {
+                    folderFileState = result.first
+                    folderName = result.second
+                    files = result.third
+                } else {
+                    onOpenProfilePicker()
                 }
-                files = listedFiles
             } catch (e: SecurityException) {
                 onOpenProfilePicker()
             }
+        } else {
+            onOpenProfilePicker()
         }
     }
 
@@ -86,9 +97,10 @@ fun FileListScreen(
     var beancountContentToImport by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 
     val importSaveDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if (uri != null && beancountContentToImport != null) {
+        val content = beancountContentToImport
+        if (uri != null && content != null) {
             try {
-                val doc = importFromBeancount(beancountContentToImport!!)
+                val doc = importFromBeancount(content)
                 val bytes = doc.save()
                 context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
 
@@ -156,7 +168,7 @@ fun FileListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                val newFile = folderFile?.createFile("application/octet-stream", "main.adzuki")
+                val newFile = folderFileState?.createFile("application/octet-stream", "main.adzuki")
                 if (newFile != null) {
                     onOpenEditor(newFile.uri.toString())
                 }
@@ -207,7 +219,7 @@ fun EditorScreen(
                 file?.name ?: "Editor"
             }
             fileName = name
-        } catch (e: SecurityException) {
+        } catch (e: Exception) {
             onNavigateBack()
         }
     }

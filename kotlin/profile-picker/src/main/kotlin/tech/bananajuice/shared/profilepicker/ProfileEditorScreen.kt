@@ -21,7 +21,7 @@ fun <T : BaseProfile> ProfileEditorScreen(
     onSelectFolder: () -> Unit,
     folderUriStr: String?,
     folderNameToShow: String?,
-    onSaveProfile: (id: String, name: String, folderUri: String, isDefault: Boolean) -> Unit
+    onSaveProfile: (id: String?, name: String, folderUri: String, isDefault: Boolean) -> Unit
 ) {
     var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
     var isDefault by remember(isDefaultInitial) { mutableStateOf(isDefaultInitial) }
@@ -68,8 +68,7 @@ fun <T : BaseProfile> ProfileEditorScreen(
             Button(
                 onClick = {
                     if (name.isNotBlank() && folderUriStr != null) {
-                        val idToSave = profileId ?: ("uuid-" + kotlin.random.Random.nextInt().toString())
-                        onSaveProfile(idToSave, name, folderUriStr, isDefault)
+                        onSaveProfile(profileId, name, folderUriStr, isDefault)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

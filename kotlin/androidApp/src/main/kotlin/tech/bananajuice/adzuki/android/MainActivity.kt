@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tech.bananajuice.shared.profilepicker.Profile
 import tech.bananajuice.shared.profilepicker.ProfilePickerScreen
 import tech.bananajuice.shared.profilepicker.ProfileEditorScreen
@@ -225,10 +226,12 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(folderUriStr) {
                                 if (folderUriStr != null) {
-                                    val uri = Uri.parse(folderUriStr)
-                                    val documentFile = DocumentFile.fromTreeUri(context, uri)
-                                    folderNameToShow = documentFile?.name ?: Uri.parse(folderUriStr).lastPathSegment
-                                    defaultNameFromFolder = documentFile?.name
+                                    withContext(Dispatchers.IO) {
+                                        val uri = Uri.parse(folderUriStr)
+                                        val documentFile = DocumentFile.fromTreeUri(context, uri)
+                                        folderNameToShow = documentFile?.name ?: uri.lastPathSegment
+                                        defaultNameFromFolder = documentFile?.name
+                                    }
                                 }
                             }
 
@@ -255,7 +258,8 @@ class MainActivity : ComponentActivity() {
                                 folderNameToShow = folderNameToShow,
                                 onSaveProfile = { id, name, uriStr, isDefault ->
                                     val actualName = if (name.isBlank() && defaultNameFromFolder != null) defaultNameFromFolder!! else name
-                                    val profile = Profile(id = id, name = actualName, folderUri = uriStr)
+                                    val actualId = id ?: java.util.UUID.randomUUID().toString()
+                                    val profile = Profile(id = actualId, name = actualName, folderUri = uriStr)
                                     viewModel.processIntent(MainIntent.SaveProfile(profile, isDefault))
                                 }
                             )
