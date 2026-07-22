@@ -1,4 +1,4 @@
-package tech.bananajuice.adzuki.android
+package tech.bananajuice.adzuki.shared
 
 import tech.bananajuice.adzuki.shared.automerge.*
 import uniffi.adzuki.*
