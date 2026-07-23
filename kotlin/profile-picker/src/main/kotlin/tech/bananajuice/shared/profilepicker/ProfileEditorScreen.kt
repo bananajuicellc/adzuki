@@ -26,6 +26,12 @@ fun <T : BaseProfile> ProfileEditorScreen(
     var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
     var isDefault by remember(isDefaultInitial) { mutableStateOf(isDefaultInitial) }
 
+    LaunchedEffect(folderNameToShow) {
+        if (name.isBlank() && folderNameToShow != null) {
+            name = folderNameToShow
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -46,19 +52,20 @@ fun <T : BaseProfile> ProfileEditorScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Profile Name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = onSelectFolder) {
                 Text(if (folderUriStr == null) "Select Folder" else "Change Folder")
             }
             folderUriStr?.let {
                 Text("Selected: ${folderNameToShow ?: "Folder"}", style = MaterialTheme.typography.bodySmall)
             }
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Profile Name") },
+                placeholder = { Text(folderNameToShow ?: "Profile Name") },
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(modifier = Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
@@ -67,12 +74,13 @@ fun <T : BaseProfile> ProfileEditorScreen(
             Spacer(modifier = Modifier.weight(1f))
             Button(
                 onClick = {
-                    if (name.isNotBlank() && folderUriStr != null) {
-                        onSaveProfile(profileId, name, folderUriStr, isDefault)
+                    if (folderUriStr != null) {
+                        val resolvedName = name.ifBlank { folderNameToShow ?: "Profile" }
+                        onSaveProfile(profileId, resolvedName, folderUriStr, isDefault)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank() && folderUriStr != null
+                enabled = folderUriStr != null
             ) {
                 Text("Save")
             }
