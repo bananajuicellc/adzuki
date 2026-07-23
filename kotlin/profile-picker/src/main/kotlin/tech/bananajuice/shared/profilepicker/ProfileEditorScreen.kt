@@ -26,6 +26,12 @@ fun <T : BaseProfile> ProfileEditorScreen(
     var name by remember(existingProfile) { mutableStateOf(existingProfile?.name ?: "") }
     var isDefault by remember(isDefaultInitial) { mutableStateOf(isDefaultInitial) }
 
+    LaunchedEffect(folderNameToShow) {
+        if (name.isBlank() && folderNameToShow != null) {
+            name = folderNameToShow
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
