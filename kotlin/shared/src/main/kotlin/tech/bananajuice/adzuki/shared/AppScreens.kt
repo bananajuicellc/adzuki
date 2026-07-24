@@ -222,7 +222,8 @@ fun FileListScreen(
 fun EditorScreen(
     fileUri: String,
     onNavigateBack: () -> Unit,
-    onNavigateToUri: ((String) -> Unit)? = null
+    onNavigateToUri: ((String) -> Unit)? = null,
+    folderUri: String? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -379,9 +380,7 @@ fun EditorScreen(
                                         modifier = Modifier.clickable {
                                             // Handle relative link clicking
                                             try {
-
-                                                val docFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)
-                                                val parent = docFile?.parentFile
+                                                val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
                                                 val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
                                                 if (target != null) {
                                                     onNavigateToUri?.invoke(target.uri.toString())
@@ -480,8 +479,7 @@ fun EditorScreen(
                         for (dir in currentDirectives) {
                             if (dir is IncludeDirective) {
                                 try {
-                                    val docFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, currentUri)
-                                    val parent = docFile?.parentFile
+                                    val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
                                     val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
                                     if (target != null && !resolvedUris.contains(target.uri.toString())) {
                                         val bytes = context.contentResolver.openInputStream(target.uri)?.use { it.readBytes() } ?: ByteArray(0)

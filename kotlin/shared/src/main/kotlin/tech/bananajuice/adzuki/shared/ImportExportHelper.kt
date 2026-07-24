@@ -110,9 +110,8 @@ fun exportToBeancount(directives: List<Directive>): String {
 }
 
 fun exportFolderToZip(context: Context, rootFolder: DocumentFile, outStream: OutputStream) {
-    val zos = ZipOutputStream(outStream)
-
-    fun walk(folder: DocumentFile, currentPath: String) {
+    ZipOutputStream(outStream).use { zos ->
+        fun walk(folder: DocumentFile, currentPath: String) {
         val files = folder.listFiles()
         for (file in files) {
             val name = file.name ?: continue
@@ -136,6 +135,6 @@ fun exportFolderToZip(context: Context, rootFolder: DocumentFile, outStream: Out
         }
     }
 
-    walk(rootFolder, "")
-    zos.finish()
+        walk(rootFolder, "")
+    }
 }

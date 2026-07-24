@@ -274,7 +274,8 @@ class MainActivity : ComponentActivity() {
                         is Screen.Editor -> EditorScreen(
                             fileUri = currentScreen.fileUri,
                             onNavigateBack = { viewModel.processIntent(MainIntent.NavigateBack) },
-                            onNavigateToUri = { viewModel.processIntent(MainIntent.OpenEditor(it)) }
+                            onNavigateToUri = { viewModel.processIntent(MainIntent.OpenEditor(it)) },
+                            folderUri = state.openFolderUri
                         )
                     }
                 }
