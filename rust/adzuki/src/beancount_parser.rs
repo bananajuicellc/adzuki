@@ -111,6 +111,25 @@ fn extract_string(tok: &SpannedToken<BeancountToken>, source: &str) -> String {
     }
 }
 
+
+pub fn parse_include_directive<'a>(
+    source: &'a str,
+) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, BeancountNode, Error<TokenSlice<'a>>> {
+    move |i: TokenSlice<'a>| {
+        let (i, _) = skip_whitespace()(i)?;
+        let (i, _) = match_token(BeancountToken::IncludeDirective)(i)?;
+        let (i, _) = skip_inline_whitespace()(i)?;
+        let (i, file_tok) = match_token(BeancountToken::StringLiteral)(i)?;
+
+        Ok((
+            i,
+            BeancountNode::IncludeDirective {
+                file: extract_string(&file_tok, source),
+            },
+        ))
+    }
+}
+
 pub fn parse_option_directive<'a>(
     source: &'a str,
 ) -> impl FnMut(TokenSlice<'a>) -> IResult<TokenSlice<'a>, BeancountNode, Error<TokenSlice<'a>>> {
@@ -285,7 +304,7 @@ pub fn parse_transaction<'a>(
                 if !i_peak.0.is_empty() && i_peak.0[0].0 == BeancountToken::Whitespace {
                     i_peak = TokenSlice(&i_peak.0[1..]);
                 }
-                if i_peak.0.is_empty() || i_peak.0[0].0 == BeancountToken::Date || i_peak.0[0].0 == BeancountToken::OptionDirective || i_peak.0[0].0 == BeancountToken::Newline {
+                if i_peak.0.is_empty() || i_peak.0[0].0 == BeancountToken::Date || i_peak.0[0].0 == BeancountToken::OptionDirective || i_peak.0[0].0 == BeancountToken::IncludeDirective || i_peak.0[0].0 == BeancountToken::Newline {
                     break;
                 }
 
@@ -433,7 +452,10 @@ pub fn parse_beancount<'a>(
         let mut parsed_node = None;
         let mut parsed_i = i.clone();
 
-        if let Ok((next_i, node)) = parse_option_directive(source)(i.clone()) {
+        if let Ok((next_i, node)) = parse_include_directive(source)(i.clone()) {
+            parsed_node = Some(node);
+            parsed_i = next_i;
+        } else if let Ok((next_i, node)) = parse_option_directive(source)(i.clone()) {
             parsed_node = Some(node);
             parsed_i = next_i;
         } else if !i.0.is_empty() && i.0[0].0 == BeancountToken::Date {

@@ -1,5 +1,10 @@
 package tech.bananajuice.adzuki.shared
 
+import android.content.Context
+import androidx.documentfile.provider.DocumentFile
+import java.io.OutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import tech.bananajuice.adzuki.shared.automerge.*
 import uniffi.adzuki.*
 
@@ -25,6 +30,14 @@ fun importFromBeancount(beancountText: String): AutomergeDocument {
                     id = nextId++,
                     name = directive.name,
                     value = directive.value
+                )
+            )
+        } else if (directive is BeancountNode.IncludeDirective) {
+            val fileVar = directive.file.replace(".beancount", ".adzuki")
+            doc.addIncludeDirective(
+                tech.bananajuice.adzuki.shared.automerge.IncludeDirective(
+                    id = nextId++,
+                    file = fileVar
                 )
             )
         } else if (directive is BeancountNode.CloseDirective) {
@@ -70,6 +83,10 @@ fun exportToBeancount(directives: List<Directive>): String {
             val safeName = dir.name.replace("\"", "\\\"")
             val safeValue = dir.value.replace("\"", "\\\"")
             sb.append("option \"$safeName\" \"$safeValue\"\n\n")
+        } else if (dir is tech.bananajuice.adzuki.shared.automerge.IncludeDirective) {
+            val file = dir.file.replace(".adzuki", ".beancount")
+            val safeFile = file.replace("\"", "\\\"")
+            sb.append("include \"${safeFile}\"\n\n")
         } else if (dir is CloseDirective) {
             sb.append("${dir.date} close ${dir.account}\n\n")
         } else if (dir is TransactionDirective) {
@@ -90,4 +107,35 @@ fun exportToBeancount(directives: List<Directive>): String {
         }
     }
     return sb.toString()
+}
+
+fun exportFolderToZip(context: Context, rootFolder: DocumentFile, outStream: OutputStream) {
+    val zos = ZipOutputStream(outStream)
+
+    fun walk(folder: DocumentFile, currentPath: String) {
+        val files = folder.listFiles()
+        for (file in files) {
+            val name = file.name ?: continue
+            if (file.isDirectory) {
+                walk(file, "${currentPath}${name}/")
+            } else if (name.endsWith(".adzuki")) {
+                val entryName = currentPath + name.replace(".adzuki", ".beancount")
+                zos.putNextEntry(ZipEntry(entryName))
+
+                try {
+                    val bytes = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() } ?: ByteArray(0)
+                    val doc = AutomergeDocument(bytes)
+                    val exportText = exportToBeancount(doc.getDirectives())
+                    zos.write(exportText.toByteArray())
+                } catch (e: Exception) {
+                    zos.write("; Error reading file: ${e.message}\n".toByteArray())
+                }
+
+                zos.closeEntry()
+            }
+        }
+    }
+
+    walk(rootFolder, "")
+    zos.finish()
 }

@@ -28,6 +28,7 @@ pub enum AstNode {
 #[derive(uniffi::Enum, Debug, Clone)]
 pub enum BeancountNode {
     Empty,
+    IncludeDirective { file: String },
     OptionDirective { name: String, value: String },
     OpenDirective { date: String, account: String, currencies: Vec<String>, booking_method: Option<String> },
     CloseDirective { date: String, account: String },

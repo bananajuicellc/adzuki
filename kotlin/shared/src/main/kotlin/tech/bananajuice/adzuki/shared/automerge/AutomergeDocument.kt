@@ -11,6 +11,12 @@ sealed interface Directive {
 }
 
 
+
+data class IncludeDirective(
+    override val id: Long,
+    val file: String
+) : Directive
+
 data class OptionDirective(
     override val id: Long,
     val name: String,
@@ -166,6 +172,20 @@ class AutomergeDocument {
         }
     }
 
+
+    fun addIncludeDirective(includeDirective: IncludeDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val len = getLength(tx, directives)
+
+            val includeDir = tx.insert(directives, len, ObjectType.MAP)
+            tx.set(includeDir, "type", "Include")
+            tx.set(includeDir, "file", includeDirective.file)
+
+            tx.commit()
+        }
+    }
+
     fun addCloseDirective(closeDirective: CloseDirective) {
         doc.startTransaction().use { tx ->
             val directives = ensureVersionAndDirectives(tx)
@@ -176,6 +196,22 @@ class AutomergeDocument {
             tx.set(closeDir, "account", closeDirective.account)
             tx.set(closeDir, "date", closeDirective.date)
 
+            tx.commit()
+        }
+    }
+
+
+    fun updateIncludeDirective(includeDirective: IncludeDirective) {
+        doc.startTransaction().use { tx ->
+            val directives = ensureVersionAndDirectives(tx)
+            val dirOpt = tx.get(directives, includeDirective.id)
+            if (dirOpt.isPresent) {
+                val dirVal = dirOpt.get()
+                if (dirVal is AmValue.Map) {
+                    val includeDir = dirVal.id
+                    tx.set(includeDir, "file", includeDirective.file)
+                }
+            }
             tx.commit()
         }
     }
@@ -268,6 +304,12 @@ class AutomergeDocument {
     }
 
 
+
+    private fun parseInclude(tx: Transaction, dirObj: ObjectId, index: Long): IncludeDirective? {
+        val file = tx.get(dirObj, "file").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
+        return IncludeDirective(index, file)
+    }
+
     private fun parseOption(tx: Transaction, dirObj: ObjectId, index: Long): OptionDirective? {
         val name = tx.get(dirObj, "name").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
         val value = tx.get(dirObj, "value").map { (it as? AmValue.Str)?.value }.orElse("") ?: ""
@@ -357,6 +399,7 @@ class AutomergeDocument {
                             val typeVal = typeOpt.get()
                             if (typeVal is AmValue.Str) {
                                 when (typeVal.value) {
+                                    "Include" -> parseInclude(tx, dirVal.id, i)?.let { result.add(it) }
                                     "Option" -> parseOption(tx, dirVal.id, i)?.let { result.add(it) }
                                     "Account" -> parseAccount(tx, dirVal.id, i)?.let { result.add(it) }
                                     "Close" -> parseClose(tx, dirVal.id, i)?.let { result.add(it) }

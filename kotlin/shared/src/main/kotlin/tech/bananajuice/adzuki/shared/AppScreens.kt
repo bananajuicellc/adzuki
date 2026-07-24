@@ -82,6 +82,19 @@ fun FileListScreen(
         onOpenProfilePicker()
     }
 
+    val exportZipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null && folderFileState != null) {
+            try {
+                context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    exportFolderToZip(context, folderFileState!!, out)
+                }
+                Toast.makeText(context, "Exported folder successfully", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to export: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) {
             try {
@@ -188,6 +201,9 @@ fun FileListScreen(
                 Button(onClick = { importPickerLauncher.launch(arrayOf("*/*")) }) {
                     Text("Import Beancount File")
                 }
+                Button(onClick = { exportZipLauncher?.launch("export.zip") }) {
+                    Text("Export All to Zip")
+                }
             }
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(files) { file ->
@@ -205,17 +221,19 @@ fun FileListScreen(
 @Composable
 fun EditorScreen(
     fileUri: String,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToUri: ((String) -> Unit)? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val uri = Uri.parse(fileUri)
     var fileName by remember { mutableStateOf<String?>("Loading...") }
 
-    LaunchedEffect(uri) {
+    val parentUri = android.net.Uri.parse(fileUri)
+    LaunchedEffect(parentUri) {
         try {
             val name = withContext(Dispatchers.IO) {
-                val file = DocumentFile.fromSingleUri(context, uri)
+                val file = DocumentFile.fromSingleUri(context, parentUri)
                 file?.name ?: "Editor"
             }
             fileName = name
@@ -311,6 +329,13 @@ fun EditorScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Include") },
+                            onClick = {
+                                showFabMenu = false
+                                docViewModel.processIntent(DocumentIntent.StartEditingInclude(null))
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Option") },
                             onClick = {
                                 showFabMenu = false
@@ -343,6 +368,33 @@ fun EditorScreen(
                                         trailingContent = {
                                             IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
                                                 Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
+                                            }
+                                        }
+                                    )
+                                }
+
+                                is IncludeDirective -> {
+                                    ListItem(
+                                        headlineContent = { Text("Include: ${dir.file}") },
+                                        modifier = Modifier.clickable {
+                                            // Handle relative link clicking
+                                            try {
+
+                                                val docFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)
+                                                val parent = docFile?.parentFile
+                                                val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                                if (target != null) {
+                                                    onNavigateToUri?.invoke(target.uri.toString())
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "Could not find file ${dir.file}", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            } catch(e: Exception) {
+                                                android.widget.Toast.makeText(context, "Error opening include: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        trailingContent = {
+                                            IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                Icon(Icons.Filled.Delete, contentDescription = "Delete Include")
                                             }
                                         }
                                     )
@@ -407,7 +459,57 @@ fun EditorScreen(
                     }
                 }
             } else {
-                ReportsScreen(docState.directives)
+
+                var resolvedDirectives by remember { mutableStateOf<List<Directive>?>(null) }
+                var isResolving by remember { mutableStateOf(true) }
+
+                val parentUri = android.net.Uri.parse(fileUri)
+                LaunchedEffect(docState.directives, fileUri) {
+
+                    isResolving = true
+                    val allDirectives = mutableListOf<Directive>()
+                    val resolvedUris = mutableSetOf<String>()
+
+                    suspend fun resolve(currentUri: android.net.Uri, currentDirectives: List<Directive>) {
+                        val uriStr = currentUri.toString()
+                        if (resolvedUris.contains(uriStr)) return
+                        resolvedUris.add(uriStr)
+
+                        allDirectives.addAll(currentDirectives)
+
+                        for (dir in currentDirectives) {
+                            if (dir is IncludeDirective) {
+                                try {
+                                    val docFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, currentUri)
+                                    val parent = docFile?.parentFile
+                                    val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                    if (target != null && !resolvedUris.contains(target.uri.toString())) {
+                                        val bytes = context.contentResolver.openInputStream(target.uri)?.use { it.readBytes() } ?: ByteArray(0)
+                                        val targetDoc = tech.bananajuice.adzuki.shared.automerge.AutomergeDocument(bytes)
+                                        resolve(target.uri, targetDoc.getDirectives())
+                                    }
+                                } catch (e: Exception) {
+                                    // Skip missing files
+                                }
+                            }
+                        }
+                    }
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        resolve(parentUri, docState.directives)
+                    }
+                    resolvedDirectives = allDirectives
+                    isResolving = false
+                }
+
+                if (isResolving) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Resolving included files...")
+                    }
+                } else {
+                    ReportsScreen(resolvedDirectives ?: emptyList())
+                }
+
             }
         }
     }
@@ -434,6 +536,13 @@ fun EditorScreen(
             onSave = { docViewModel.processIntent(DocumentIntent.SaveClose(it)) },
             onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingClose) },
             directives = docState.directives
+        )
+    }
+    if (docState.isEditingInclude) {
+        IncludeEditDialog(
+            includeDirective = docState.includeBeingEdited,
+            onSave = { docViewModel.processIntent(DocumentIntent.SaveInclude(it)) },
+            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingInclude) }
         )
     }
     if (docState.isEditingOption) {
@@ -614,6 +723,39 @@ fun CloseEditDialog(
         confirmButton = {
             Button(onClick = {
                 onSave(CloseDirective(closeDirective?.id ?: -1L, date, accountName))
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+
+@Composable
+fun IncludeEditDialog(
+    includeDirective: IncludeDirective?,
+    onSave: (IncludeDirective) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var file by remember { mutableStateOf(includeDirective?.file ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (includeDirective == null) "Add Include" else "Edit Include") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = file,
+                    onValueChange = { file = it },
+                    label = { Text("File Name (e.g. other.beancount)") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(IncludeDirective(includeDirective?.id ?: -1L, file))
             }) { Text("Save") }
         },
         dismissButton = {

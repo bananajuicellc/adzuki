@@ -20,5 +20,8 @@ sealed interface DocumentIntent {
     object CancelEditingOption : DocumentIntent
     data class SaveOption(val option: OptionDirective) : DocumentIntent
     data class DeleteDirective(val id: Long) : DocumentIntent
+    data class StartEditingInclude(val includeDirective: IncludeDirective?) : DocumentIntent
+    object CancelEditingInclude : DocumentIntent
+    data class SaveInclude(val includeDirective: IncludeDirective) : DocumentIntent
     object DismissError : DocumentIntent
 }

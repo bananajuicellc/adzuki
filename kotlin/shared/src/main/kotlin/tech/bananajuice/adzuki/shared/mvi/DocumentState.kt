@@ -13,6 +13,8 @@ data class DocumentState(
     val closeBeingEdited: CloseDirective? = null,
     val isEditingOption: Boolean = false,
     val optionBeingEdited: OptionDirective? = null,
+    val isEditingInclude: Boolean = false,
+    val includeBeingEdited: IncludeDirective? = null,
     val isLoading: Boolean = true,
     val errorMessage: String? = null
 )
