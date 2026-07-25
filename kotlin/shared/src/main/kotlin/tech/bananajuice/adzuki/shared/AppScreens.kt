@@ -387,17 +387,22 @@ fun EditorScreen(
                                     ListItem(
                                         headlineContent = { Text("Include: ${dir.file}") },
                                         modifier = Modifier.clickable {
-                                            // Handle relative link clicking
-                                            try {
-                                                val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
-                                                val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
-                                                if (target != null) {
-                                                    onNavigateToUri?.invoke(target.uri.toString())
-                                                } else {
-                                                    android.widget.Toast.makeText(context, "Could not find file ${dir.file}", android.widget.Toast.LENGTH_SHORT).show()
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                try {
+                                                    val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
+                                                    val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                                    withContext(Dispatchers.Main) {
+                                                        if (target != null) {
+                                                            onNavigateToUri?.invoke(target.uri.toString())
+                                                        } else {
+                                                            android.widget.Toast.makeText(context, "Could not find file ${dir.file}", android.widget.Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                } catch(e: Exception) {
+                                                    withContext(Dispatchers.Main) {
+                                                        android.widget.Toast.makeText(context, "Error opening include: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
-                                            } catch(e: Exception) {
-                                                android.widget.Toast.makeText(context, "Error opening include: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         },
                                         trailingContent = {
