@@ -239,11 +239,10 @@ fun EditorScreen(
     val uri = Uri.parse(fileUri)
     var fileName by remember { mutableStateOf<String?>("Loading...") }
 
-    val parentUri = android.net.Uri.parse(fileUri)
-    LaunchedEffect(parentUri) {
+    LaunchedEffect(uri) {
         try {
             val name = withContext(Dispatchers.IO) {
-                val file = DocumentFile.fromSingleUri(context, parentUri)
+                val file = DocumentFile.fromSingleUri(context, uri)
                 file?.name ?: "Editor"
             }
             fileName = name
@@ -387,22 +386,17 @@ fun EditorScreen(
                                     ListItem(
                                         headlineContent = { Text("Include: ${dir.file}") },
                                         modifier = Modifier.clickable {
-                                            coroutineScope.launch(Dispatchers.IO) {
-                                                try {
-                                                    val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
-                                                    val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
-                                                    withContext(Dispatchers.Main) {
-                                                        if (target != null) {
-                                                            onNavigateToUri?.invoke(target.uri.toString())
-                                                        } else {
-                                                            android.widget.Toast.makeText(context, "Could not find file ${dir.file}", android.widget.Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                } catch(e: Exception) {
-                                                    withContext(Dispatchers.Main) {
-                                                        android.widget.Toast.makeText(context, "Error opening include: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
+                                            // Handle relative link clicking
+                                            try {
+                                                val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
+                                                val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                                if (target != null) {
+                                                    onNavigateToUri?.invoke(target.uri.toString())
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "Could not find file ${dir.file}", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
+                                            } catch(e: Exception) {
+                                                android.widget.Toast.makeText(context, "Error opening include: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         },
                                         trailingContent = {
@@ -482,7 +476,6 @@ fun EditorScreen(
                     isResolving = true
                     val allDirectives = mutableListOf<Directive>()
                     val resolvedUris = mutableSetOf<String>()
-                    val parentFolder = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
 
                     suspend fun resolve(currentUri: android.net.Uri, currentDirectives: List<Directive>) {
                         val uriStr = currentUri.toString()
@@ -494,7 +487,8 @@ fun EditorScreen(
                         for (dir in currentDirectives) {
                             if (dir is IncludeDirective) {
                                 try {
-                                    val target = parentFolder?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                    val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
+                                    val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
                                     if (target != null && !resolvedUris.contains(target.uri.toString())) {
                                         val bytes = context.contentResolver.openInputStream(target.uri)?.use { it.readBytes() } ?: ByteArray(0)
                                         val targetDoc = tech.bananajuice.adzuki.shared.automerge.AutomergeDocument(bytes)
@@ -506,10 +500,9 @@ fun EditorScreen(
                             }
                         }
                     }
-                }
 
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        resolve(parentUri, docState.directives)
+                        resolve(uri, docState.directives)
                     }
                     resolvedDirectives = allDirectives
                     isResolving = false
@@ -767,12 +760,9 @@ fun IncludeEditDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    onSave(IncludeDirective(includeDirective?.id ?: -1L, file))
-                },
-                enabled = file.isNotBlank()
-            ) { Text("Save") }
+            Button(onClick = {
+                onSave(IncludeDirective(includeDirective?.id ?: -1L, file))
+            }) { Text("Save") }
         },
         dismissButton = {
             Button(onClick = onDismiss) { Text("Cancel") }
