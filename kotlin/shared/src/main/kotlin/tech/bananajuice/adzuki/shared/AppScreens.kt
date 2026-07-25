@@ -482,6 +482,7 @@ fun EditorScreen(
                     isResolving = true
                     val allDirectives = mutableListOf<Directive>()
                     val resolvedUris = mutableSetOf<String>()
+                    val parentFolder = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
 
                     suspend fun resolve(currentUri: android.net.Uri, currentDirectives: List<Directive>) {
                         val uriStr = currentUri.toString()
@@ -493,8 +494,7 @@ fun EditorScreen(
                         for (dir in currentDirectives) {
                             if (dir is IncludeDirective) {
                                 try {
-                                    val parent = folderUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(it)) }
-                                    val target = parent?.findFile(dir.file.replace(".beancount", ".adzuki"))
+                                    val target = parentFolder?.findFile(dir.file.replace(".beancount", ".adzuki"))
                                     if (target != null && !resolvedUris.contains(target.uri.toString())) {
                                         val bytes = context.contentResolver.openInputStream(target.uri)?.use { it.readBytes() } ?: ByteArray(0)
                                         val targetDoc = tech.bananajuice.adzuki.shared.automerge.AutomergeDocument(bytes)
@@ -506,6 +506,7 @@ fun EditorScreen(
                             }
                         }
                     }
+                }
 
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         resolve(parentUri, docState.directives)
