@@ -767,9 +767,12 @@ fun IncludeEditDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                onSave(IncludeDirective(includeDirective?.id ?: -1L, file))
-            }) { Text("Save") }
+            Button(
+                onClick = {
+                    onSave(IncludeDirective(includeDirective?.id ?: -1L, file))
+                },
+                enabled = file.isNotBlank()
+            ) { Text("Save") }
         },
         dismissButton = {
             Button(onClick = onDismiss) { Text("Cancel") }
