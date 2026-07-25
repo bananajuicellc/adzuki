@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -82,15 +84,22 @@ fun FileListScreen(
         onOpenProfilePicker()
     }
 
+    val scope = rememberCoroutineScope()
     val exportZipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null && folderFileState != null) {
-            try {
-                context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
-                    exportFolderToZip(context, folderFileState!!, out)
+            scope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                        exportFolderToZip(context, folderFileState!!, out)
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Exported folder successfully", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Failed to export: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
-                Toast.makeText(context, "Exported folder successfully", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to export: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
