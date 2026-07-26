@@ -13,12 +13,14 @@ pub fn validate_beancount(nodes: &[DirectiveWrapper]) -> Vec<BeancountParseError
     sorted_nodes.sort_by(|a, b| {
         let date_a: &str = match &a.directive {
             BeancountNode::OptionDirective { .. } | BeancountNode::Empty => "",
+            BeancountNode::IncludeDirective { .. } => "",
             BeancountNode::OpenDirective { date, .. } => date.as_str(),
             BeancountNode::CloseDirective { date, .. } => date.as_str(),
             BeancountNode::Transaction { date, .. } => date.as_str(),
         };
         let date_b: &str = match &b.directive {
             BeancountNode::OptionDirective { .. } | BeancountNode::Empty => "",
+            BeancountNode::IncludeDirective { .. } => "",
             BeancountNode::OpenDirective { date, .. } => date.as_str(),
             BeancountNode::CloseDirective { date, .. } => date.as_str(),
             BeancountNode::Transaction { date, .. } => date.as_str(),

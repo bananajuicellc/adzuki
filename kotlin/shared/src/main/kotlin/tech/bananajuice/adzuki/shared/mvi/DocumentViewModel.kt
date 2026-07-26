@@ -97,6 +97,24 @@ class DocumentViewModel(
                 }
             }
             is DocumentIntent.SaveOption -> saveOption(intent.option)
+
+            is DocumentIntent.StartEditingInclude -> {
+                _state.update {
+                    it.copy(
+                        isEditingInclude = true,
+                        includeBeingEdited = intent.includeDirective
+                    )
+                }
+            }
+            is DocumentIntent.CancelEditingInclude -> {
+                _state.update {
+                    it.copy(
+                        isEditingInclude = false,
+                        includeBeingEdited = null
+                    )
+                }
+            }
+            is DocumentIntent.SaveInclude -> saveInclude(intent.includeDirective)
             is DocumentIntent.DeleteDirective -> deleteDirective(intent.id)
             is DocumentIntent.DismissError -> {
                 _state.update { it.copy(errorMessage = null) }
@@ -229,6 +247,34 @@ class DocumentViewModel(
         }
     }
 
+
+    private fun saveInclude(includeDirective: tech.bananajuice.adzuki.shared.automerge.IncludeDirective) {
+        coroutineScope.launch {
+            try {
+                val doc = document ?: return@launch
+
+                if (includeDirective.id < 0L) {
+                    doc.addIncludeDirective(includeDirective)
+                } else {
+                    doc.updateIncludeDirective(includeDirective)
+                }
+
+                val bytes = doc.save()
+                saveDocumentBytes(bytes)
+
+                val directives = doc.getDirectives()
+                _state.update {
+                    it.copy(
+                        directives = directives,
+                        isEditingInclude = false,
+                        includeBeingEdited = null
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to save include: ${e.message}") }
+            }
+        }
+    }
     private fun deleteDirective(id: Long) {
         coroutineScope.launch {
             try {

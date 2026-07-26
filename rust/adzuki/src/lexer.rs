@@ -54,6 +54,9 @@ pub enum BeancountToken {
     #[regex(r#""([^"\\]|\\.)*""#)]
     StringLiteral,
 
+    #[token("include")]
+    IncludeDirective,
+
     #[token("option")]
     OptionDirective,
 
