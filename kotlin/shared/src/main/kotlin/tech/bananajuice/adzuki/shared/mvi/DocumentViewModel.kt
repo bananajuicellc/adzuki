@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tech.bananajuice.adzuki.shared.automerge.AutomergeDocument
 
+import tech.bananajuice.adzuki.shared.importFromBeancount
+
 class DocumentViewModel(
     private val coroutineScope: CoroutineScope,
     private val loadDocumentBytes: suspend () -> ByteArray,
-    private val saveDocumentBytes: suspend (ByteArray) -> Unit
+    private val saveDocumentBytes: suspend (ByteArray) -> Unit,
+    private val isBeancount: Boolean = false
 ) {
     private val _state = MutableStateFlow(DocumentState())
     val state: StateFlow<DocumentState> = _state.asStateFlow()
@@ -126,9 +129,16 @@ class DocumentViewModel(
         coroutineScope.launch {
             try {
                 val bytes = loadDocumentBytes()
-                document = AutomergeDocument(bytes)
-                val directives = document?.getDirectives() ?: emptyList()
-                _state.update { it.copy(directives = directives, isLoading = false) }
+                if (isBeancount) {
+                    val text = String(bytes, Charsets.UTF_8)
+                    document = importFromBeancount(text)
+                    val directives = document?.getDirectives() ?: emptyList()
+                    _state.update { it.copy(directives = directives, isLoading = false, isReadOnly = true) }
+                } else {
+                    document = AutomergeDocument(bytes)
+                    val directives = document?.getDirectives() ?: emptyList()
+                    _state.update { it.copy(directives = directives, isLoading = false, isReadOnly = false) }
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, errorMessage = "Failed to load document: ${e.message}") }
             }
