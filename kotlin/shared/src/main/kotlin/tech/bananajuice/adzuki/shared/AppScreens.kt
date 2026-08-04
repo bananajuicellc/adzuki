@@ -238,7 +238,7 @@ fun EditorScreen(
     val context = LocalContext.current
     val uri = Uri.parse(fileUri)
     var fileName by remember { mutableStateOf<String?>("Loading...") }
-    var isBeancountFile by remember(fileUri) { mutableStateOf<Boolean?>(null) }
+    var isBeancountFile by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(uri) {
         try {
