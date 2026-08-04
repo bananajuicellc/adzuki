@@ -137,7 +137,7 @@ class DocumentViewModel(
                 } else {
                     document = AutomergeDocument(bytes)
                     val directives = document?.getDirectives() ?: emptyList()
-                    _state.update { it.copy(directives = directives, isLoading = false, isReadOnly = false) }
+                    _state.update { it.copy(directives = directives, isLoading = false, isReadOnly = true) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, errorMessage = "Failed to load document: ${e.message}") }
