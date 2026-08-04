@@ -58,7 +58,7 @@ fun FileListScreen(
                     if (folderFile != null) {
                         val name = folderFile.name ?: "Unknown Folder"
                         val listedFiles = folderFile.listFiles()
-                            .filter { it.isFile && it.name?.endsWith(".adzuki") == true }
+                            .filter { it.isFile && (it.name?.endsWith(".adzuki") == true || it.name?.endsWith(".beancount") == true) }
                             .toList()
                         Triple(folderFile, name, listedFiles)
                     } else {
@@ -238,6 +238,7 @@ fun EditorScreen(
     val context = LocalContext.current
     val uri = Uri.parse(fileUri)
     var fileName by remember { mutableStateOf<String?>("Loading...") }
+    var isBeancountFile by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(uri) {
         try {
@@ -246,6 +247,7 @@ fun EditorScreen(
                 file?.name ?: "Editor"
             }
             fileName = name
+            isBeancountFile = name.endsWith(".beancount")
         } catch (e: Exception) {
             onNavigateBack()
         }
@@ -253,15 +255,24 @@ fun EditorScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
-    val docViewModel = remember(fileUri) {
+    if (isBeancountFile == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Loading...")
+        }
+        return
+    }
+
+    val docViewModel = remember(fileUri, isBeancountFile) {
         DocumentViewModel(
             coroutineScope = coroutineScope,
             loadDocumentBytes = {
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
             },
             saveDocumentBytes = { bytes ->
+                if (isBeancountFile == true) throw IllegalStateException("Cannot save a read-only Beancount file")
                 context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-            }
+            },
+            isBeancount = isBeancountFile == true
         )
     }
     val docState by docViewModel.state.collectAsState()
@@ -306,7 +317,7 @@ fun EditorScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab == 0) {
+            if (selectedTab == 0 && !docState.isReadOnly) {
                 var showFabMenu by remember { mutableStateOf(false) }
                 Box {
                     FloatingActionButton(onClick = { showFabMenu = !showFabMenu }) {
@@ -375,8 +386,10 @@ fun EditorScreen(
                                         headlineContent = { Text("Account: ${dir.name}") },
                                         supportingContent = { Text("Date: ${dir.date} | Currencies: ${dir.constraintCurrencies.joinToString(", ")}") },
                                         trailingContent = {
-                                            IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
-                                                Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
+                                            if (!docState.isReadOnly) {
+                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
+                                                }
                                             }
                                         }
                                     )
@@ -400,8 +413,10 @@ fun EditorScreen(
                                             }
                                         },
                                         trailingContent = {
-                                            IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
-                                                Icon(Icons.Filled.Delete, contentDescription = "Delete Include")
+                                            if (!docState.isReadOnly) {
+                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Include")
+                                                }
                                             }
                                         }
                                     )
@@ -411,8 +426,10 @@ fun EditorScreen(
                                         headlineContent = { Text("Option: ${dir.name}") },
                                         supportingContent = { Text("Value: ${dir.value}") },
                                         trailingContent = {
-                                            IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
-                                                Icon(Icons.Filled.Delete, contentDescription = "Delete Option")
+                                            if (!docState.isReadOnly) {
+                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Option")
+                                                }
                                             }
                                         }
                                     )
@@ -422,8 +439,10 @@ fun EditorScreen(
                                         headlineContent = { Text("Close: ${dir.account}") },
                                         supportingContent = { Text("Date: ${dir.date}") },
                                         trailingContent = {
-                                            IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
-                                                Icon(Icons.Filled.Delete, contentDescription = "Delete Close Directive")
+                                            if (!docState.isReadOnly) {
+                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Close Directive")
+                                                }
                                             }
                                         }
                                     )
@@ -450,11 +469,13 @@ fun EditorScreen(
                                                         modifier = Modifier.padding(end = 8.dp)
                                                     )
                                                 }
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.StartEditingTransaction(dir)) }) {
-                                                    Icon(Icons.Filled.Edit, contentDescription = "Edit Transaction")
-                                                }
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
-                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Transaction")
+                                                if (!docState.isReadOnly) {
+                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.StartEditingTransaction(dir)) }) {
+                                                        Icon(Icons.Filled.Edit, contentDescription = "Edit Transaction")
+                                                    }
+                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Transaction")
+                                                    }
                                                 }
                                             }
                                         }

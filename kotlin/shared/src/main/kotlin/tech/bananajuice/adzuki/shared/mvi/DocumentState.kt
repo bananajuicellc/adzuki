@@ -16,5 +16,6 @@ data class DocumentState(
     val isEditingInclude: Boolean = false,
     val includeBeingEdited: IncludeDirective? = null,
     val isLoading: Boolean = true,
+    val isReadOnly: Boolean = false,
     val errorMessage: String? = null
 )
