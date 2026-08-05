@@ -14,7 +14,7 @@ import tech.bananajuice.adzuki.shared.importFromBeancount
 class DocumentViewModel(
     private val coroutineScope: CoroutineScope,
     private val loadDocumentBytes: suspend () -> ByteArray,
-    private val saveDocumentBytes: suspend (ByteArray) -> Unit,
+
     private val isBeancount: Boolean = false
 ) {
     private val _state = MutableStateFlow(DocumentState())
@@ -145,158 +145,15 @@ class DocumentViewModel(
         }
     }
 
-    private fun saveTransaction(transaction: tech.bananajuice.adzuki.shared.automerge.TransactionDirective) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
+    private fun saveTransaction(transaction: tech.bananajuice.adzuki.shared.automerge.TransactionDirective) {}
 
-                if (transaction.id < 0L) {
-                    doc.addTransaction(transaction)
-                } else {
-                    doc.updateTransaction(transaction)
-                }
+    private fun saveAccount(account: tech.bananajuice.adzuki.shared.automerge.AccountDirective) {}
 
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
+    private fun saveClose(closeDirective: tech.bananajuice.adzuki.shared.automerge.CloseDirective) {}
 
-                val directives = doc.getDirectives()
-                _state.update {
-                    it.copy(
-                        directives = directives,
-                        isEditingTransaction = false,
-                        transactionBeingEdited = null
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to save transaction: ${e.message}") }
-            }
-        }
-    }
-
-    private fun saveAccount(account: tech.bananajuice.adzuki.shared.automerge.AccountDirective) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
-
-                if (account.id < 0L) {
-                    doc.addAccount(account)
-                } else {
-                    doc.updateAccount(account)
-                }
-
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
-
-                val directives = doc.getDirectives()
-                _state.update {
-                    it.copy(
-                        directives = directives,
-                        isEditingAccount = false,
-                        accountBeingEdited = null
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to save account: ${e.message}") }
-            }
-        }
-    }
-
-    private fun saveClose(closeDirective: tech.bananajuice.adzuki.shared.automerge.CloseDirective) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
-
-                if (closeDirective.id < 0L) {
-                    doc.addCloseDirective(closeDirective)
-                } else {
-                    doc.updateCloseDirective(closeDirective)
-                }
-
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
-
-                val directives = doc.getDirectives()
-                _state.update {
-                    it.copy(
-                        directives = directives,
-                        isEditingClose = false,
-                        closeBeingEdited = null
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to save close directive: ${e.message}") }
-            }
-        }
-    }
-
-    private fun saveOption(option: tech.bananajuice.adzuki.shared.automerge.OptionDirective) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
-
-                if (option.id < 0L) {
-                    doc.addOption(option)
-                } else {
-                    doc.updateOption(option)
-                }
-
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
-
-                val directives = doc.getDirectives()
-                _state.update {
-                    it.copy(
-                        directives = directives,
-                        isEditingOption = false,
-                        optionBeingEdited = null
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to save option: ${e.message}") }
-            }
-        }
-    }
+    private fun saveOption(option: tech.bananajuice.adzuki.shared.automerge.OptionDirective) {}
 
 
-    private fun saveInclude(includeDirective: tech.bananajuice.adzuki.shared.automerge.IncludeDirective) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
-
-                if (includeDirective.id < 0L) {
-                    doc.addIncludeDirective(includeDirective)
-                } else {
-                    doc.updateIncludeDirective(includeDirective)
-                }
-
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
-
-                val directives = doc.getDirectives()
-                _state.update {
-                    it.copy(
-                        directives = directives,
-                        isEditingInclude = false,
-                        includeBeingEdited = null
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to save include: ${e.message}") }
-            }
-        }
-    }
-    private fun deleteDirective(id: Long) {
-        coroutineScope.launch {
-            try {
-                val doc = document ?: return@launch
-                doc.deleteDirective(id)
-                val bytes = doc.save()
-                saveDocumentBytes(bytes)
-                val directives = doc.getDirectives()
-                _state.update { it.copy(directives = directives) }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Failed to delete item: ${e.message}") }
-            }
-        }
-    }
+    private fun saveInclude(includeDirective: tech.bananajuice.adzuki.shared.automerge.IncludeDirective) {}
+    private fun deleteDirective(id: Long) {}
 }

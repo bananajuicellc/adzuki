@@ -268,10 +268,6 @@ fun EditorScreen(
             loadDocumentBytes = {
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
             },
-            saveDocumentBytes = { bytes ->
-                if (isBeancountFile == true) throw IllegalStateException("Cannot save a read-only Beancount file")
-                context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-            },
             isBeancount = isBeancountFile == true
         )
     }
@@ -317,7 +313,7 @@ fun EditorScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab == 0 && !docState.isReadOnly) {
+            if (false) {
                 var showFabMenu by remember { mutableStateOf(false) }
                 Box {
                     FloatingActionButton(onClick = { showFabMenu = !showFabMenu }) {
@@ -331,35 +327,35 @@ fun EditorScreen(
                             text = { Text("Transaction") },
                             onClick = {
                                 showFabMenu = false
-                                docViewModel.processIntent(DocumentIntent.StartEditingTransaction(null))
+                                /* removed */
                             }
                         )
                         DropdownMenuItem(
                             text = { Text("Open Account") },
                             onClick = {
                                 showFabMenu = false
-                                docViewModel.processIntent(DocumentIntent.StartEditingAccount(null))
+                                /* removed */
                             }
                         )
                         DropdownMenuItem(
                             text = { Text("Close Account") },
                             onClick = {
                                 showFabMenu = false
-                                docViewModel.processIntent(DocumentIntent.StartEditingClose(null))
+                                /* removed */
                             }
                         )
                         DropdownMenuItem(
                             text = { Text("Include") },
                             onClick = {
                                 showFabMenu = false
-                                docViewModel.processIntent(DocumentIntent.StartEditingInclude(null))
+                                /* removed */
                             }
                         )
                         DropdownMenuItem(
                             text = { Text("Option") },
                             onClick = {
                                 showFabMenu = false
-                                docViewModel.processIntent(DocumentIntent.StartEditingOption(null))
+                                /* removed */
                             }
                         )
                     }
@@ -386,8 +382,8 @@ fun EditorScreen(
                                         headlineContent = { Text("Account: ${dir.name}") },
                                         supportingContent = { Text("Date: ${dir.date} | Currencies: ${dir.constraintCurrencies.joinToString(", ")}") },
                                         trailingContent = {
-                                            if (!docState.isReadOnly) {
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                            if (false) {
+                                                IconButton(onClick = { /* removed */ }) {
                                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Account")
                                                 }
                                             }
@@ -413,8 +409,8 @@ fun EditorScreen(
                                             }
                                         },
                                         trailingContent = {
-                                            if (!docState.isReadOnly) {
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                            if (false) {
+                                                IconButton(onClick = { /* removed */ }) {
                                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Include")
                                                 }
                                             }
@@ -426,8 +422,8 @@ fun EditorScreen(
                                         headlineContent = { Text("Option: ${dir.name}") },
                                         supportingContent = { Text("Value: ${dir.value}") },
                                         trailingContent = {
-                                            if (!docState.isReadOnly) {
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                            if (false) {
+                                                IconButton(onClick = { /* removed */ }) {
                                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Option")
                                                 }
                                             }
@@ -439,8 +435,8 @@ fun EditorScreen(
                                         headlineContent = { Text("Close: ${dir.account}") },
                                         supportingContent = { Text("Date: ${dir.date}") },
                                         trailingContent = {
-                                            if (!docState.isReadOnly) {
-                                                IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                            if (false) {
+                                                IconButton(onClick = { /* removed */ }) {
                                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Close Directive")
                                                 }
                                             }
@@ -469,11 +465,11 @@ fun EditorScreen(
                                                         modifier = Modifier.padding(end = 8.dp)
                                                     )
                                                 }
-                                                if (!docState.isReadOnly) {
-                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.StartEditingTransaction(dir)) }) {
+                                                if (false) {
+                                                    IconButton(onClick = { /* removed */ }) {
                                                         Icon(Icons.Filled.Edit, contentDescription = "Edit Transaction")
                                                     }
-                                                    IconButton(onClick = { docViewModel.processIntent(DocumentIntent.DeleteDirective(dir.id)) }) {
+                                                    IconButton(onClick = { /* removed */ }) {
                                                         Icon(Icons.Filled.Delete, contentDescription = "Delete Transaction")
                                                     }
                                                 }
@@ -541,42 +537,42 @@ fun EditorScreen(
         }
     }
 
-    if (docState.isEditingTransaction) {
+    if (false) {
         TransactionEditDialog(
             transaction = docState.transactionBeingEdited,
-            onSave = { docViewModel.processIntent(DocumentIntent.SaveTransaction(it)) },
-            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingTransaction) },
+            onSave = { /* removed */ },
+            onDismiss = { /* removed */ },
             directives = docState.directives
         )
     }
-    if (docState.isEditingAccount) {
+    if (false) {
         AccountEditDialog(
             account = docState.accountBeingEdited,
-            onSave = { docViewModel.processIntent(DocumentIntent.SaveAccount(it)) },
-            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingAccount) },
+            onSave = { /* removed */ },
+            onDismiss = { /* removed */ },
             directives = docState.directives
         )
     }
-    if (docState.isEditingClose) {
+    if (false) {
         CloseEditDialog(
             closeDirective = docState.closeBeingEdited,
-            onSave = { docViewModel.processIntent(DocumentIntent.SaveClose(it)) },
-            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingClose) },
+            onSave = { /* removed */ },
+            onDismiss = { /* removed */ },
             directives = docState.directives
         )
     }
-    if (docState.isEditingInclude) {
+    if (false) {
         IncludeEditDialog(
             includeDirective = docState.includeBeingEdited,
-            onSave = { docViewModel.processIntent(DocumentIntent.SaveInclude(it)) },
-            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingInclude) }
+            onSave = { /* removed */ },
+            onDismiss = { /* removed */ }
         )
     }
-    if (docState.isEditingOption) {
+    if (false) {
         OptionEditDialog(
             option = docState.optionBeingEdited,
-            onSave = { docViewModel.processIntent(DocumentIntent.SaveOption(it)) },
-            onDismiss = { docViewModel.processIntent(DocumentIntent.CancelEditingOption) }
+            onSave = { /* removed */ },
+            onDismiss = { /* removed */ }
         )
     }
 }

@@ -105,21 +105,6 @@ class AutomergeDocument {
         }
     }
 
-    fun updateOption(option: OptionDirective) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val dirOpt = tx.get(directives, option.id)
-            if (dirOpt.isPresent) {
-                val dirVal = dirOpt.get()
-                if (dirVal is AmValue.Map) {
-                    val optionDir = dirVal.id
-                    tx.set(optionDir, "name", option.name)
-                    tx.set(optionDir, "value", option.value)
-                }
-            }
-            tx.commit()
-        }
-    }
 
     fun addAccount(account: AccountDirective) {
         doc.startTransaction().use { tx ->
@@ -141,36 +126,6 @@ class AutomergeDocument {
     }
 
 
-    fun updateAccount(account: AccountDirective) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val dirOpt = tx.get(directives, account.id)
-            if (dirOpt.isPresent) {
-                val dirVal = dirOpt.get()
-                if (dirVal is AmValue.Map) {
-                    val accountDir = dirVal.id
-                    tx.set(accountDir, "name", account.name)
-                    tx.set(accountDir, "date", account.date)
-
-                    val currListOpt = tx.get(accountDir, "constraint_currencies")
-                    val currList = if (currListOpt.isPresent && currListOpt.get() is AmValue.List) {
-                        val listId = (currListOpt.get() as AmValue.List).id
-                        val clen = getLength(tx, listId)
-                        for (i in (clen - 1L) downTo 0L) {
-                            tx.delete(listId, i)
-                        }
-                        listId
-                    } else {
-                        tx.set(accountDir, "constraint_currencies", ObjectType.LIST)
-                    }
-                    account.constraintCurrencies.forEachIndexed { i, c ->
-                        tx.insert(currList, i.toLong(), c)
-                    }
-                }
-            }
-            tx.commit()
-        }
-    }
 
 
     fun addIncludeDirective(includeDirective: IncludeDirective) {
@@ -201,36 +156,7 @@ class AutomergeDocument {
     }
 
 
-    fun updateIncludeDirective(includeDirective: IncludeDirective) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val dirOpt = tx.get(directives, includeDirective.id)
-            if (dirOpt.isPresent) {
-                val dirVal = dirOpt.get()
-                if (dirVal is AmValue.Map) {
-                    val includeDir = dirVal.id
-                    tx.set(includeDir, "file", includeDirective.file)
-                }
-            }
-            tx.commit()
-        }
-    }
 
-    fun updateCloseDirective(closeDirective: CloseDirective) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val dirOpt = tx.get(directives, closeDirective.id)
-            if (dirOpt.isPresent) {
-                val dirVal = dirOpt.get()
-                if (dirVal is AmValue.Map) {
-                    val closeDir = dirVal.id
-                    tx.set(closeDir, "account", closeDirective.account)
-                    tx.set(closeDir, "date", closeDirective.date)
-                }
-            }
-            tx.commit()
-        }
-    }
 
     fun addTransaction(transaction: TransactionDirective) {
         doc.startTransaction().use { tx ->
@@ -255,53 +181,7 @@ class AutomergeDocument {
         }
     }
 
-    fun updateTransaction(transaction: TransactionDirective) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val dirOpt = tx.get(directives, transaction.id)
-            if (dirOpt.isPresent) {
-                val dirVal = dirOpt.get()
-                if (dirVal is AmValue.Map) {
-                    val txnDir = dirVal.id
-                    tx.set(txnDir, "date", transaction.date)
-                    tx.set(txnDir, "payee", transaction.payee)
-                    tx.set(txnDir, "memo", transaction.memo)
 
-                    val postingsListOpt = tx.get(txnDir, "postings")
-                    if (postingsListOpt.isPresent) {
-                        val postingsListVal = postingsListOpt.get()
-                        if (postingsListVal is AmValue.List) {
-                            val postingsList = postingsListVal.id
-                            // Clear existing postings
-                            val plen = getLength(tx, postingsList)
-                            for (i in (plen - 1) downTo 0) {
-                                tx.delete(postingsList, i)
-                            }
-                            // Insert new postings
-                            transaction.postings.forEachIndexed { i, p ->
-                                val postingObj = tx.insert(postingsList, i.toLong(), ObjectType.MAP)
-                                tx.set(postingObj, "account", p.account)
-                                tx.set(postingObj, "amount", p.amount)
-                                tx.set(postingObj, "currency", p.currency)
-                            }
-                        }
-                    }
-                }
-            }
-            tx.commit()
-        }
-    }
-
-    fun deleteDirective(id: Long) {
-        doc.startTransaction().use { tx ->
-            val directives = ensureVersionAndDirectives(tx)
-            val len = getLength(tx, directives)
-            if (id in 0 until len) {
-                tx.delete(directives, id)
-            }
-            tx.commit()
-        }
-    }
 
 
 
