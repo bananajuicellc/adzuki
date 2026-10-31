@@ -15,5 +15,7 @@ color-eyre = "0.6.5"
 crossterm = "0.29.0"
 ratatui = "0.30.2"
 ratatui-interact = { version = "0.5.3", features = ["clipboard"] }
+rust_decimal = "1.43.0"
+rustledger-core = "0.24.0"
 rustledger-loader = "0.24.0"
 rustledger-query = "0.24.0"
