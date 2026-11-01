@@ -18,24 +18,24 @@
 
 ; Donations use the check date so that they get aggregated the correct
 ; date as understood by the donor, when I send acknowledgements.
-2026-01-14 * "donation, check # 1001" #acknowledged
+2026-01-14 * "check # 1001" #acknowledged
     deposit-date: 2026-11-01
     Assets:OperatingFund:Checking 123.45 USD
     Expenses:Fees:Checking 0.55 USD
     Income:Donor:DoeJohn -124.00 USD
     
-2026-10-13 * "donation, Venmo account @example"
+2026-10-13 * "Venmo account @example"
     Assets:OperatingFund:Checking              98.76 USD
     Expenses:Fees:Checking                      1.24 USD
     Income:Donor:SmithJane                      -100 USD
 
-2026-10-26 * "donation, check # ***9876"
+2026-10-26 * "check # ***9876"
     deposit-date: 2026-11-01
     Assets:OperatingFund:Checking              12.34 USD
     Expenses:Fees:Checking                      2.66 USD
     Income:Donor:SmithJane                    -15.00 USD
 
-2026-10-31 * "Meeting" "donation, check # 1234"
+2026-10-31 * "Meeting" "check # 1234"
     deposit-date: 2026-11-01
     Assets:OperatingFund:Checking 123.45 USD
     Expenses:Fees:Checking 0.55 USD
