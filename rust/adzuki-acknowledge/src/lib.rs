@@ -23,14 +23,14 @@ pub struct Acknowledgements {
 }
 
 fn extract_name(open: &Open) -> String {
-    match open.meta.get("name").map(|value| value) {
+    match open.meta.get("name") {
         Some(MetaValue::String(name)) => name.to_owned(),
         _ => open.account.to_string(),
     }
 }
 
 fn extract_email(name: &str, open: &Open) -> Option<String> {
-    match open.meta.get("email").map(|value| value) {
+    match open.meta.get("email") {
         Some(MetaValue::String(email)) => Some(format!("\"{} <{}>\"", name, email)),
         _ => None,
     }

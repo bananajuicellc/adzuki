@@ -38,7 +38,7 @@ pub fn render_email(acknowledgement: &crate::Acknowledgement) -> String {
         }
     }
 
-    out.push_str(" in support of Nortside Friends Meeting, Religious Society of Friends. No goods or services were provided in return for this contribution.\n\n");
+    out.push_str(" in support of Northside Friends Meeting, Religious Society of Friends. No goods or services were provided in return for this contribution.\n\n");
     out.push_str("Timothy Sweña\n");
     out.push_str("Treasurer\n");
     out.push_str("Northside Friends Meeting\n");
