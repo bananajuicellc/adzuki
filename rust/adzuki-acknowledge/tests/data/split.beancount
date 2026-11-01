@@ -1,0 +1,5 @@
+; Beancount file to test include logic.
+
+include "split-accounts.beancount"
+include "split-transactions-1.beancount"
+include "split-transactions-2.beancount"

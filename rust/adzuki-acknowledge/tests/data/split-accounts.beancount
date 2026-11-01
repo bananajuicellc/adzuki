@@ -1,0 +1,15 @@
+
+2026-01-01 open Assets:OperatingFund:Checking USD
+2026-01-01 open Expenses:Fees:Checking USD
+
+2026-01-01 open Income:Donor:DoeJohn USD
+
+; Missing name and email.
+2026-01-01 open Income:Donor:SmithJane USD
+    
+2026-01-01 open Income:Donor:KowalskiJan USD
+    name: "Jan Kowalski"
+    email: "jan.kowalski@example.com"
+
+2026-01-01 open Income:Donor:PérezJuan USD
+    email: "juan.perez@example.com"
