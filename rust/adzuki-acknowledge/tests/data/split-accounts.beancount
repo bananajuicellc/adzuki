@@ -3,14 +3,13 @@
 2026-01-01 open Expenses:Fees:Checking USD
 
 2026-01-01 open Income:Donor:DoeJohn USD
-    name: "John Doe"
-    email: "john.doe@example.com"
-        
-2026-01-01 open Income:Donor:SmithJane USD
-    email: "jane.smith@example.com"
-    
+
 ; Missing name and email.
+2026-01-01 open Income:Donor:SmithJane USD
+    
 2026-01-01 open Income:Donor:KowalskiJan USD
+    name: "Jan Kowalski"
+    email: "jan.kowalski@example.com"
 
 2026-01-01 open Income:Donor:PérezJuan USD
-    name: "Juan Pérez"
+    email: "juan.perez@example.com"

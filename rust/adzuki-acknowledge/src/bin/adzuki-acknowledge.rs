@@ -164,7 +164,12 @@ impl SelectableBox {
         }
 
         let mut selected_lines = Vec::with_capacity(end_line - start.line + 1);
-        selected_lines.push(lines[start.line].chars().skip(start.col).collect::<String>());
+        selected_lines.push(
+            lines[start.line]
+                .chars()
+                .skip(start.col)
+                .collect::<String>(),
+        );
         for line in &lines[start.line + 1..end_line] {
             selected_lines.push(line.clone());
         }
@@ -195,11 +200,7 @@ impl SelectableBox {
                 }
 
                 let line_len = lines[line_idx].chars().count();
-                let col_start = if line_idx == start.line {
-                    start.col
-                } else {
-                    0
-                };
+                let col_start = if line_idx == start.line { start.col } else { 0 };
                 let col_end = if line_idx == end.line {
                     end.col
                 } else {
@@ -472,10 +473,8 @@ impl App {
     fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         // TODO: load in the background and display a spinner.
         let cli = Cli::parse();
-        let acknowledgements =
-            crate::Acknowledgements::from_beancount(cli.beancount_path).map_err(|e| {
-                color_eyre::eyre::eyre!(e)
-            })?;
+        let acknowledgements = crate::Acknowledgements::from_beancount(cli.beancount_path)
+            .map_err(|e| color_eyre::eyre::eyre!(e))?;
         self = Self::with_acknowledgements(acknowledgements);
 
         while !self.should_quit {
@@ -637,10 +636,9 @@ mod tests {
     fn test_mouse_drag_selection() {
         let mut app = App::new();
         app.body_box.area = Rect::new(0, 0, 40, 10);
-        app.body_box.state.set_lines(vec![
-            "Hello world".to_string(),
-            "Second line".to_string(),
-        ]);
+        app.body_box
+            .state
+            .set_lines(vec!["Hello world".to_string(), "Second line".to_string()]);
 
         // Inner area starts at (1, 1) due to borders
         let start = app.body_box.mouse_to_text_pos(1, 1).unwrap();
@@ -727,8 +725,9 @@ mod tests {
 
     #[test]
     fn test_account_navigation_and_email_rendering() {
-        let acks = crate::Acknowledgements::from_beancount(get_test_data_path("standalone.beancount"))
-            .expect("should load standalone.beancount");
+        let acks =
+            crate::Acknowledgements::from_beancount(get_test_data_path("standalone.beancount"))
+                .expect("should load standalone.beancount");
         let mut app = App::with_acknowledgements(acks);
 
         assert_eq!(
@@ -740,8 +739,11 @@ mod tests {
             ]
         );
         assert_eq!(app.list_state.selected(), Some(0));
-        assert!(app.body_box.state.lines()[0].contains("Income:Donor:KowalskiJan"));
-        assert_eq!(app.to_box.state.lines(), &[""]);
+        assert!(app.body_box.state.lines()[0].contains("Jan Kowalski"));
+        assert_eq!(
+            app.to_box.state.lines(),
+            &["\"Jan Kowalski <jan.kowalski@example.com>\""],
+        );
         assert_eq!(app.subject_box.state.lines(), &[EMAIL_SUBJECT]);
 
         app.next_account();
@@ -752,10 +754,7 @@ mod tests {
         app.next_account();
         assert_eq!(app.list_state.selected(), Some(2));
         assert!(app.body_box.state.lines()[0].contains("Income:Donor:SmithJane"));
-        assert_eq!(
-            app.to_box.state.lines(),
-            &["\"Income:Donor:SmithJane <jane.smith@example.com>\""]
-        );
+        assert_eq!(app.to_box.state.lines(), &[""]);
 
         // Clamped at the end
         app.next_account();
