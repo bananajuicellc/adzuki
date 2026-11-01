@@ -16,6 +16,8 @@
 2026-01-01 open Income:Donor:PérezJuan USD
     name: "Juan Pérez"
 
+2026-01-01 open Income:Donor:TestertonTesty USD
+
 ; Donations use the check date so that they get aggregated the correct
 ; date as understood by the donor, when I send acknowledgements.
 2026-01-14 * "check # 1001" #acknowledged
@@ -23,11 +25,26 @@
     Assets:OperatingFund:Checking 123.45 USD
     Expenses:Fees:Checking 0.55 USD
     Income:Donor:DoeJohn -124.00 USD
-    
+
+2026-10-06 * "Meeting" "check # 2342" #acknowledged
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
+
+2026-10-13 * "check # 2343"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
+
 2026-10-13 * "Venmo account @example"
     Assets:OperatingFund:Checking              98.76 USD
     Expenses:Fees:Checking                      1.24 USD
     Income:Donor:SmithJane                      -100 USD
+
+2026-10-20 * "Meeting" "check # 2344"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
 
 2026-10-26 * "check # ***9876"
     deposit-date: 2026-11-01
@@ -35,8 +52,13 @@
     Expenses:Fees:Checking                      2.66 USD
     Income:Donor:SmithJane                    -15.00 USD
 
+2026-10-27 * "Meeting" "check # 2345"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
+
 2026-10-31 * "Meeting" "check # 1234"
     deposit-date: 2026-11-01
     Assets:OperatingFund:Checking 123.45 USD
     Expenses:Fees:Checking 0.55 USD
-    Income:Donor:DoeJohn -124.00 USD
+    Income:Donor:KowalskiJan -124.00 USD
