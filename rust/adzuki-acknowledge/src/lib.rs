@@ -1,24 +1,25 @@
-use rust_decimal::Decimal;
-use rustledger_core::position;
-use rustledger_core::{Open, directive::Directive, position::Position};
+use rustledger_core::{Open, directive::Directive, NaiveDate, position::Position};
 use rustledger_loader::{LoadResult, Loader};
 use rustledger_query::parse;
 use rustledger_query::{Value, executor::Executor};
-use std::{collections::HashMap, collections::hash_map::Entry, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
-struct Acknowledgement {
-    name: String,
-    email: Option<String>,
-    donations: Vec<Donation>,
+mod email;
+
+pub struct Acknowledgement {
+    pub name: String,
+    pub email: Option<String>,
+    pub donations: Vec<Donation>,
 }
 
-struct Donation {
-    amount: Box<Position>,
-    narration: String,
+pub struct Donation {
+    pub date: NaiveDate,
+    pub amount: Box<Position>,
+    pub narration: String,
 }
 
 pub struct Acknowledgements {
-    acknowledgements: HashMap<String, Acknowledgement>,
+    pub acknowledgements: HashMap<String, Acknowledgement>,
 }
 
 fn extract_donors(result: &LoadResult) -> HashMap<String, Acknowledgement> {
@@ -49,7 +50,7 @@ fn extract_unacknowledged_donations(
     let mut executor = Executor::new_with_sources(&result.directives, &result.source_map);
     let query = parse(
         "
-            SELECT account, narration, position
+            SELECT account, date, narration, position
             WHERE 'acknowledged' NOT IN tags
             AND account ~ '^Income:Donor:'
             ORDER BY account ASC
@@ -59,23 +60,27 @@ fn extract_unacknowledged_donations(
     for row in query_result.rows.iter_mut() {
         let position = row.pop();
         let narration = row.pop();
+        let date = row.pop();
         let account = row.pop();
 
         if let Some(Value::String(account)) = &account
             && let Some(Value::String(narration)) = &narration
+            && let Some(Value::Date(date)) = &date
             && let Some(Value::Position(position)) = &position
         {
             donations.push((
                 account.clone(),
                 Donation {
+                    date: date.clone(),
                     amount: position.clone(),
                     narration: narration.clone(),
                 },
             ));
         } else {
             return Err(anyhow::anyhow!(
-                "Invalid account {:?}, narration {:?}, or position {:?}",
+                "Invalid account {:?}, date {:?}, narration {:?}, or position {:?}",
                 account,
+                date,
                 narration,
                 position
             ));
