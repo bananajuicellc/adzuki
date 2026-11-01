@@ -434,11 +434,12 @@ struct Cli {
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
+    let cli = Cli::parse();
     let terminal = ratatui::init();
     let _ = enable_mouse_capture(&mut io::stdout());
 
     let app = App::new();
-    let app_result = app.run(terminal);
+    let app_result = app.run(terminal, cli.beancount_path);
 
     // Standard cleanup routines (restores terminal raw mode & cursor state)
     let _ = disable_mouse_capture(&mut io::stdout());
