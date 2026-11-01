@@ -1,9 +1,11 @@
+use adzuki_acknowledge::{Acknowledgements, email};
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, MouseButton, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use ratatui_interact::{
     components::{
@@ -14,8 +16,45 @@ use ratatui_interact::{
     state::FocusManager,
     utils::{copy_to_clipboard, disable_mouse_capture, enable_mouse_capture},
 };
-use rustledger_loader::Loader;
-use std::{io, path::PathBuf};
+use std::{collections::HashMap, io, path::PathBuf};
+
+const EMAIL_SUBJECT: &str = "Contribution Acknowledgement from Northside Friends Meeting";
+
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return text.lines().map(String::from).collect();
+    }
+    let mut wrapped = Vec::new();
+    for line in text.lines() {
+        if line.is_empty() {
+            wrapped.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        let mut current_len = 0;
+        for word in line.split_whitespace() {
+            let word_len = word.chars().count();
+            if current.is_empty() {
+                current.push_str(word);
+                current_len = word_len;
+            } else if current_len + 1 + word_len <= max_width {
+                current.push(' ');
+                current.push_str(word);
+                current_len += 1 + word_len;
+            } else {
+                wrapped.push(current);
+                current = word.to_string();
+                current_len = word_len;
+            }
+        }
+        if !current.is_empty() {
+            wrapped.push(current);
+        } else {
+            wrapped.push(String::new());
+        }
+    }
+    wrapped
+}
 
 // 1. Identify interactive widgets
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -33,25 +72,101 @@ struct TextPos {
 struct App {
     should_quit: bool,
     focus_manager: FocusManager<WidgetId>,
+    acknowledgements: Acknowledgements,
+    accounts: Vec<String>,
+    list_state: ListState,
     text_box_state: ScrollableContentState,
     text_box_area: Rect,
+    last_wrap_width: usize,
     selection: Option<(TextPos, TextPos)>,
 }
 
 impl App {
     fn new() -> Self {
+        Self::with_acknowledgements(Acknowledgements {
+            acknowledgements: HashMap::new(),
+        })
+    }
+
+    fn with_acknowledgements(acknowledgements: Acknowledgements) -> Self {
         let mut focus_manager = FocusManager::new();
         focus_manager.register(WidgetId::MainTextBox);
 
         let mut text_box_state = ScrollableContentState::empty();
         text_box_state.set_focused(focus_manager.is_focused(&WidgetId::MainTextBox));
 
-        Self {
+        let mut accounts: Vec<String> = acknowledgements.acknowledgements.keys().cloned().collect();
+        accounts.sort();
+
+        let mut list_state = ListState::default();
+        if !accounts.is_empty() {
+            list_state.select(Some(0));
+        }
+
+        let mut app = Self {
             should_quit: false,
             focus_manager,
+            acknowledgements,
+            accounts,
+            list_state,
             text_box_state,
             text_box_area: Rect::default(),
+            last_wrap_width: 0,
             selection: None,
+        };
+        app.update_current_email();
+        app
+    }
+
+    fn selected_acknowledgement(&self) -> Option<&adzuki_acknowledge::Acknowledgement> {
+        let idx = self.list_state.selected()?;
+        let account = self.accounts.get(idx)?;
+        self.acknowledgements.acknowledgements.get(account)
+    }
+
+    fn update_current_email(&mut self) {
+        self.selection = None;
+        let width = self.inner_area().width as usize;
+        self.last_wrap_width = width;
+        if let Some(ack) = self.selected_acknowledgement() {
+            let rendered = crate::email::render_email(ack);
+            self.text_box_state.set_lines(wrap_text(&rendered, width));
+            let new_width = self.inner_area().width as usize;
+            if new_width != width && new_width > 0 {
+                self.last_wrap_width = new_width;
+                self.text_box_state
+                    .set_lines(wrap_text(&rendered, new_width));
+            }
+        } else {
+            self.text_box_state.set_lines(Vec::new());
+        }
+    }
+
+    fn next_account(&mut self) {
+        if self.accounts.is_empty() {
+            return;
+        }
+        let next = match self.list_state.selected() {
+            Some(i) => (i + 1).min(self.accounts.len() - 1),
+            None => 0,
+        };
+        if self.list_state.selected() != Some(next) {
+            self.list_state.select(Some(next));
+            self.update_current_email();
+        }
+    }
+
+    fn previous_account(&mut self) {
+        if self.accounts.is_empty() {
+            return;
+        }
+        let prev = match self.list_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        if self.list_state.selected() != Some(prev) {
+            self.list_state.select(Some(prev));
+            self.update_current_email();
         }
     }
 
@@ -138,13 +253,11 @@ impl App {
     fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         // TODO: load in the background and display a spinner.
         let cli = Cli::parse();
-        let result = Loader::new().load(&cli.beancount_path)?;
-        let lines = result
-            .directives
-            .iter()
-            .flat_map(|d| d.to_string().lines().map(String::from).collect::<Vec<_>>())
-            .collect();
-        self.text_box_state.set_lines(lines);
+        let acknowledgements =
+            crate::Acknowledgements::from_beancount(cli.beancount_path).map_err(|e| {
+                color_eyre::eyre::eyre!(e)
+            })?;
+        self = Self::with_acknowledgements(acknowledgements);
 
         while !self.should_quit {
             // Render Frame
@@ -159,6 +272,14 @@ impl App {
                 Event::Key(key) if key.kind == event::KeyEventKind::Press => {
                     if key.code == KeyCode::Char('q') && !has_ctrl(&key) {
                         self.should_quit = true;
+                    } else if matches!(key.code, KeyCode::Char('n') | KeyCode::Char('j'))
+                        && !has_ctrl(&key)
+                    {
+                        self.next_account();
+                    } else if matches!(key.code, KeyCode::Char('p') | KeyCode::Char('k'))
+                        && !has_ctrl(&key)
+                    {
+                        self.previous_account();
                     } else if is_ctrl_a(&key) {
                         self.select_all();
                     } else if key.code == KeyCode::Char('c') && has_ctrl(&key) {
@@ -219,21 +340,53 @@ impl App {
 
     // 4. UI Layout Definition
     fn draw(&mut self, frame: &mut Frame) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(frame.area());
 
-        self.text_box_area = chunks[0];
+        let items: Vec<ListItem> = self
+            .accounts
+            .iter()
+            .map(|account| ListItem::new(account.as_str()))
+            .collect();
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title("Accounts"))
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+        frame.render_stateful_widget(list, columns[0], &mut self.list_state);
+
+        let right_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(4), Constraint::Min(0)])
+            .split(columns[1]);
+
+        let email_addr = self
+            .selected_acknowledgement()
+            .and_then(|ack| ack.email.as_deref())
+            .unwrap_or("");
+        let header_text = format!("To: {}\nSubject: {}", email_addr, EMAIL_SUBJECT);
+        let header_box = Paragraph::new(header_text)
+            .block(Block::default().borders(Borders::ALL).title("Email Header"));
+        frame.render_widget(header_box, right_chunks[0]);
+
+        self.text_box_area = right_chunks[1];
+        if self.inner_area().width as usize != self.last_wrap_width {
+            self.update_current_email();
+        }
         self.text_box_state
             .set_focused(self.focus_manager.is_focused(&WidgetId::MainTextBox));
 
         // Instantiate and mount the scrollable widget
-        let text_box =
-            ScrollableContent::new(&self.text_box_state).title("Scrollable Content Container");
-        let inner = text_box.inner_area(chunks[0]);
+        let text_box = ScrollableContent::new(&self.text_box_state).title("Email Body");
+        let inner = text_box.inner_area(right_chunks[1]);
 
-        frame.render_widget(text_box, chunks[0]);
+        frame.render_widget(text_box, right_chunks[1]);
 
         // Highlight selected text if any
         if let Some((start, end)) = self.normalized_selection() {
@@ -298,6 +451,14 @@ fn main() -> color_eyre::Result<()> {
 mod tests {
     use super::*;
 
+    fn get_test_data_path(filename: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests");
+        path.push("data");
+        path.push(filename);
+        path
+    }
+
     #[test]
     fn test_select_all_and_selected_text() {
         let mut app = App::new();
@@ -333,5 +494,54 @@ mod tests {
         app.selection = Some((start, end));
 
         assert_eq!(app.selected_text().as_deref(), Some("Hello world\nSecond"));
+    }
+
+    #[test]
+    fn test_account_navigation_and_email_rendering() {
+        let acks = crate::Acknowledgements::from_beancount(get_test_data_path("standalone.beancount"))
+            .expect("should load standalone.beancount");
+        let mut app = App::with_acknowledgements(acks);
+
+        assert_eq!(
+            app.accounts,
+            vec![
+                "Income:Donor:KowalskiJan",
+                "Income:Donor:PérezJuan",
+                "Income:Donor:SmithJane",
+            ]
+        );
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert!(app.text_box_state.lines()[0].contains("Income:Donor:KowalskiJan"));
+
+        app.next_account();
+        assert_eq!(app.list_state.selected(), Some(1));
+        assert!(app.text_box_state.lines()[0].contains("Juan Pérez"));
+
+        app.next_account();
+        assert_eq!(app.list_state.selected(), Some(2));
+        assert!(app.text_box_state.lines()[0].contains("Income:Donor:SmithJane"));
+
+        // Clamped at the end
+        app.next_account();
+        assert_eq!(app.list_state.selected(), Some(2));
+
+        app.previous_account();
+        assert_eq!(app.list_state.selected(), Some(1));
+    }
+
+    #[test]
+    fn test_wrap_text() {
+        let text = "Greetings Friend,\n\nThis letter gratefully acknowledges receipt of your contribution.";
+        let wrapped = wrap_text(text, 25);
+        assert_eq!(
+            wrapped,
+            vec![
+                "Greetings Friend,",
+                "",
+                "This letter gratefully",
+                "acknowledges receipt of",
+                "your contribution.",
+            ]
+        );
     }
 }

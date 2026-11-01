@@ -1,10 +1,10 @@
-use rustledger_core::{Open, directive::Directive, NaiveDate, position::Position};
+use rustledger_core::{MetaValue, NaiveDate, Open, directive::Directive, position::Position};
 use rustledger_loader::{LoadResult, Loader};
 use rustledger_query::parse;
 use rustledger_query::{Value, executor::Executor};
 use std::{collections::HashMap, path::PathBuf};
 
-mod email;
+pub mod email;
 
 pub struct Acknowledgement {
     pub name: String,
@@ -22,6 +22,20 @@ pub struct Acknowledgements {
     pub acknowledgements: HashMap<String, Acknowledgement>,
 }
 
+fn extract_name(open: &Open) -> String {
+    match open.meta.get("name").map(|value| value) {
+        Some(MetaValue::String(name)) => name.to_owned(),
+        _ => open.account.to_string(),
+    }
+}
+
+fn extract_email(name: &str, open: &Open) -> Option<String> {
+    match open.meta.get("email").map(|value| value) {
+        Some(MetaValue::String(email)) => Some(format!("\"{} <{}>\"", name, email)),
+        _ => None,
+    }
+}
+
 fn extract_donors(result: &LoadResult) -> HashMap<String, Acknowledgement> {
     let mut donors = HashMap::new();
     for directive in &result.directives {
@@ -30,7 +44,7 @@ fn extract_donors(result: &LoadResult) -> HashMap<String, Acknowledgement> {
                 let account = open.account.to_string();
                 donors.entry(account).or_insert_with(|| {
                     let name = extract_name(&open);
-                    let email = open.meta.get("email").map(|value| value.to_string());
+                    let email = extract_email(&name, &open);
                     Acknowledgement {
                         name,
                         email,
@@ -98,18 +112,16 @@ impl Acknowledgements {
             match acknowledgements.get_mut(&account) {
                 Some(acknowledgement) => {
                     acknowledgement.donations.push(donation);
-                },
-                None => { return Err(anyhow::anyhow!("Missing metadata for account {}", account)); },
+                }
+                None => {
+                    return Err(anyhow::anyhow!("Missing metadata for account {}", account));
+                }
             }
         }
         // Delete all entries with no donations.
         acknowledgements.retain(|_, value| value.donations.len() != 0);
         Ok(Acknowledgements { acknowledgements })
     }
-}
-
-fn extract_name(open: &Open) -> String {
-    open.account.to_string()
 }
 
 #[cfg(test)]
@@ -152,7 +164,7 @@ mod tests {
         for filename in test_cases {
             let path = get_test_data_path(filename);
             let got = Acknowledgements::from_beancount(path);
-            let acknowledgements =  got
+            let acknowledgements = got
                 .expect("expected to load test data successfully")
                 .acknowledgements;
             assert_eq!(expected.len(), acknowledgements.len());
