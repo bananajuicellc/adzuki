@@ -1,0 +1,22 @@
+
+2026-10-20 * "Meeting" "check # 2344"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
+
+2026-10-26 * "check # ***9876"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking              12.34 USD
+    Expenses:Fees:Checking                      2.66 USD
+    Income:Donor:SmithJane                    -15.00 USD
+    
+2026-10-27 * "Meeting" "check # 2345"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 20 USD
+    Income:Donor:PérezJuan -20 USD
+    
+2026-10-31 * "Meeting" "check # 1234"
+    deposit-date: 2026-11-01
+    Assets:OperatingFund:Checking 123.45 USD
+    Expenses:Fees:Checking 0.55 USD
+    Income:Donor:KowalskiJan -124.00 USD

@@ -29,3 +29,6 @@ build/
 */build/
 */*/build/
 local.properties
+
+# rustledger
+*.cache
